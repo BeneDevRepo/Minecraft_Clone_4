@@ -228,7 +228,8 @@ int main() {
 
 
 	// <Shadowmap Framebuffer>
-	const unsigned int SHADOW_WIDTH = 4096, SHADOW_HEIGHT = 4096;
+	// const unsigned int SHADOW_WIDTH = 4096, SHADOW_HEIGHT = 4096;
+	const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
 	GLuint shadowFBO;
 	glCreateFramebuffers(1, &shadowFBO);
 
