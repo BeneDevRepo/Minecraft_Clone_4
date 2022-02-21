@@ -1,7 +1,6 @@
 #include "Player.h"
 
 #include <vector>
-#include <algorithm>
 
 #include "AABB.h"
 
@@ -13,7 +12,7 @@ Player::Player(const float x, const float y, const float z, const float FOV):
 		vel(0.f), inputDir(0.f),
 		perspective(Perspective::FIRST_PERSON), flying(true),
 		Yaw(0), Pitch(0),
-		bodyMesh(StaticMesh::cube(false, glm::vec3(4.f / 16.f, 1.65f, 8.f / 16.f))) {
+		bodyMesh(StaticMesh::cube(glm::vec3(4.f / 16.f, 1.65f, 8.f / 16.f))) {
 }
 
 Player::~Player() {
@@ -37,8 +36,6 @@ void Player::handleMouseInput(const float dt, const int mouseX, const int mouseY
 	pmouseY = mouseY;
 
 
-
-
 	// Perspective:
 	static bool perspChangePressed = false;
 	if (GetAsyncKeyState(VK_F5) & 0x8000) {
@@ -59,88 +56,37 @@ void Player::handleMouseInput(const float dt, const int mouseX, const int mouseY
 }
 
 
-bool RayVsRect(const glm::vec3 &ray_origin, const glm::vec3 &ray_dir, const AABB &target, glm::vec3 &contact_point, glm::vec3 &contact_normal, float &t_hit_near) {
-	contact_normal = { 0.f, 0.f, 0.f };
-	contact_point = { 0.f, 0.f, 0.f };
-
-	// Cache division
-	glm::vec3 invdir = 1.f / ray_dir;
-
-	// Calculate intersections with rectangle bounding axes
-	glm::vec3 t_near = (target.min - ray_origin) * invdir;
-	glm::vec3 t_far = (target.max - ray_origin) * invdir;
-
-	if (std::isnan(t_far.y) || std::isnan(t_far.x) || std::isnan(t_far.z)) return false;
-	if (std::isnan(t_near.y) || std::isnan(t_near.x) || std::isnan(t_near.z)) return false;
-
-	// Sort distances
-	if (t_near.x > t_far.x) std::swap(t_near.x, t_far.x);
-	if (t_near.y > t_far.y) std::swap(t_near.y, t_far.y);
-	if (t_near.z > t_far.z) std::swap(t_near.z, t_far.z);
-
-	// Early rejection
-	if (t_near.x > t_far.y || t_near.y > t_far.x) return false; // ORIG
-	if (t_near.x > t_far.z || t_near.z > t_far.x) return false;
-	if (t_near.y > t_far.z || t_near.z > t_far.y) return false;
-
-	// Closest 'time' will be the first contact
-	t_hit_near = std::max(std::max(t_near.x, t_near.y), t_near.z);
-
-	// Furthest 'time' is contact on opposite side of target
-	const float t_hit_far = std::min(std::min(t_far.x, t_far.y), t_far.z);
-
-	// Reject if ray direction is pointing away from object
-	if (t_hit_far < 0)
-		return false;
-
-	// Contact point of collision from parametric line equation
-	contact_point = ray_origin + t_hit_near * ray_dir;
-
-	// --- Dimensional extrapolation:
-	if (t_near.x > t_near.y && t_near.x > t_near.z) {
-		if (invdir.x < 0)
-			contact_normal = { 1, 0, 0 };
-		else
-			contact_normal = { -1, 0, 0 };
-	} else if (t_near.y > t_near.x && t_near.y > t_near.z) {
-		if (invdir.y < 0)
-			contact_normal = { 0, 1, 0 };
-		else
-			contact_normal = { 0, -1, 0 };
-	} else if (t_near.z > t_near.x && t_near.z > t_near.y) {
-		if (invdir.z < 0)
-			contact_normal = { 0, 0, 1 };
-		else
-			contact_normal = { 0, 0, -1 };
-	}
-
-	// Note if t_near == t_far, collision is principly in a diagonal
-	// so pointless to resolve. By returning a CN={0,0} even though its
-	// considered a hit, the resolver wont change anything.
-
-	return true;
-}
-
-bool DynamicRectVsRect(const glm::vec3 displacement, const glm::vec3 dynamicCenter, const glm::vec3 dynamicDimensions, const AABB &r_static, glm::vec3 &contact_point, glm::vec3 &contact_normal, float &contact_time) {
-	// Check if dynamic rectangle is actually moving - we assume rectangles are NOT in collision to start
-	if (displacement.x == 0 && displacement.y == 0 && displacement.z == 0)
-		return false;
-
-	// Expand target rectangle by source dimensions
-	AABB expanded_target;
-	expanded_target.min = r_static.min - dynamicDimensions / 2.f;
-	expanded_target.max = r_static.max + dynamicDimensions / 2.f;
-
-	if (RayVsRect(dynamicCenter, displacement, expanded_target, contact_point, contact_normal, contact_time))
-		return contact_time >= 0.0f && contact_time < 1.0f;
-
-	return false;
-}
-
-
 
 
 // bool raycast(World &world, const glm::vec3 origin, const glm::vec3 direction, float radius, glm::vec3 &result);
+
+
+
+// bool collideWithWorld(const AABB &entity, const glm::vec3 displacement, const World &world, glm::ivec3 &contact_normal, float &contact_time) {
+// 	const AABB movementBounds = AABB::fromCenter(entity.center() + displacement / 2.f, entity.dimensions() + glm::abs(displacement));
+// 	const std::vector<AABB> initialColliders = world.getPossibleCollisions(movementBounds);
+// 	contact_time = 2.f;
+
+// 	for(const AABB &collider_cur : initialColliders) {
+// 		float t_cur;
+// 		glm::ivec3 contact_normal_cur;
+// 		if(DynamicRectVsRect(displacement, entity, collider_cur, contact_normal_cur, t_cur)) {
+// 			if(t_cur >= 0.f && t_cur < contact_time) {
+// 				contact_time = t_cur;
+// 				contact_normal = contact_normal_cur;
+// 			}
+// 		}
+// 	}
+
+// 	return contact_time < 1.f;
+// }
+
+struct Bullet {
+	glm::vec3 pos, vel;
+};
+
+std::vector<Bullet> bullets;
+
 
 void Player::update(const float dt, World& world) {
 	static bool onGround = false;
@@ -167,6 +113,8 @@ void Player::update(const float dt, World& world) {
 	if(flying) {
 		if(GetAsyncKeyState(' ') & 0x8000)
 			vel.y = 10.f;
+		else if(GetAsyncKeyState(VK_SHIFT) & 0x8000)
+			vel.y = 10.f;
 		else
 			vel.y = 0.f;
 	}
@@ -175,7 +123,7 @@ void Player::update(const float dt, World& world) {
 
 	// Input:
 	if(glm::length(inputDir) > .001f)
-		acc2D += glm::normalize(inputDir) * 50.f * (1.f + 1.f * !!(GetAsyncKeyState(VK_CONTROL)&0x8000));
+		acc2D += glm::normalize(inputDir) * ((GetAsyncKeyState(VK_CONTROL)&0x8000) ? 100 : 50);
 
 	vel += glm::vec3(acc2D.x, 0.f, acc2D.y) * dt;
 
@@ -190,84 +138,48 @@ void Player::update(const float dt, World& world) {
 	if(!flying)
 		vel += glm::vec3(0.f, -20.f + .01f, 0.f) * dt;
 
+
+
+
+
+
 	/************************
 	 * COLLISION RESOLUTION *
 	 ************************/
 
 	onGround = false;
 
-	glm::vec3 displacement = vel * dt;
 
 	for(int i = 0; i < 3; i++) {
-		AABB collider;
+		float contact_time;
+		glm::ivec3 contact_normal;
 
-		{
-			AABB movementBounds;
-			movementBounds.min.x = std::min(pos.x, pos.x + vel.x * dt) - .3f;
-			movementBounds.max.x = std::max(pos.x, pos.x + vel.x * dt) + .3f;
+		if(!world.collidesWith(getAABB(), vel * dt, contact_normal, contact_time))
+			break;
 
-			movementBounds.min.y = std::min(pos.y, pos.y + vel.y * dt);
-			movementBounds.max.y = std::max(pos.y, pos.y + vel.y * dt) + 1.8f;
+		contact_time = std::max(contact_time-.02f, 0.f);
 
-			movementBounds.min.z = std::min(pos.z, pos.z + vel.z * dt) - .3f;
-			movementBounds.max.z = std::max(pos.z, pos.z + vel.z * dt) + .3f;
-
-			std::vector<AABB> initialColliders = world.getPossibleCollisions(movementBounds);
-
-			float closestColliderTime = 1.f / 0.f;
-
-			for(const AABB &col : initialColliders) {
-				float t = 0;
-				glm::vec3 cp, cn;
-				// if(DynamicRectVsRect(vel, getCenter(), glm::vec3(.6f, 1.8f, .6f), dt, col, cp, cn, t)) {
-				if(DynamicRectVsRect(displacement, getCenter(), glm::vec3(.6f, 1.8f, .6f), col, cp, cn, t)) {
-					if(t >= 0.f && t < closestColliderTime) {
-						collider = col;
-						closestColliderTime = t;
-					}
-				}
-			}
-
-			if(closestColliderTime == 1.f / 0.f) // No collision found
-				break;
-		}
-
-
-		glm::vec3 contact_point, contact_normal;
-		float contact_time = 0.0f;
-		// if (DynamicRectVsRect(vel, getCenter(), glm::vec3(.6f, 1.8f, .6f), dt, collider, contact_point, contact_normal, contact_time)) {
-		if (DynamicRectVsRect(displacement, getCenter(), glm::vec3(.6f, 1.8f, .6f), collider, contact_point, contact_normal, contact_time)) {
-			// DEBUG_RENRERER->box(collider.min, collider.max); // ####################   DEBUG   #####################
-
-			if(contact_normal.x) {
-				// pos.x += vel.x * (contact_time-.01) * (dt);
-				pos.x += displacement.x * (contact_time-.01);
-				vel.x = 0;
-				displacement.x = 0;
-			} else if(contact_normal.y) {
-				// pos.y += vel.y * (contact_time-.01) * (dt);
-				pos.y += displacement.y * (contact_time-.01);
-				vel.y = 0;
-				displacement.y = 0;
-				if(contact_normal.y > 0)
-					onGround = true;
-			} else if(contact_normal.z) {
-				// pos.z += vel.z * (contact_time-.01) * (dt);
-				pos.z += displacement.z * (contact_time-.01);
-				vel.z = 0;
-				displacement.z = 0;
+		for(int j = 0; j < 3; j++) {
+			if(contact_normal[j]) {
+				pos[j] += vel[j] * dt * contact_time;
+				vel[j] = 0;
 			}
 		}
+		onGround |= contact_normal.y > 0;
+
+		// DEBUG_RENRERER->box(collider.min, collider.max); // ####################   DEBUG   #####################
 	}
 
-	// Update the player rectangles position, with its modified velocity
-	// pos += vel * dt;
-	pos += displacement;
+	// Update the player position with the modified velocity
+	pos += vel * dt;
 
-	DEBUG_RENRERER->box(getViewPos() + getViewDir() * 0.2f - glm::vec3(.0001f, .0001f, .0001f), getViewPos() + getViewDir() * .2f + glm::vec3(.0001f, .0001f, .0001f));
 
-	if(perspective == Perspective::THIRD_PERSON)
-		DEBUG_RENRERER->box(glm::vec3(pos.x-.3f, pos.y, pos.z-.3f), glm::vec3(pos.x+.3f, pos.y+1.8f, pos.z+.3f));
+
+
+
+
+
+
 
 
 	// Object Picking:
@@ -277,30 +189,18 @@ void Player::update(const float dt, World& world) {
 		const glm::vec3 viewPos = getViewPos();
 		const glm::vec3 viewDir = getViewDir();
 
+		const AABB bounds = AABB::fromCenter(getCenter() + viewDir * MAX_DIST / 2.f, glm::abs(viewDir * MAX_DIST)); // bounding Box of View Ray
+		const std::vector<AABB> initialColliders = world.getPossibleCollisions(bounds); // all Blocks within Viewray-Boundingbox
 
-		std::vector<AABB> initialColliders;
-		{
-			AABB bounds;
-			bounds.min.x = std::min(pos.x, pos.x + viewDir.x * MAX_DIST) - .3f;
-			bounds.max.x = std::max(pos.x, pos.x + viewDir.x * MAX_DIST) + .3f;
-
-			bounds.min.y = std::min(pos.y, pos.y + viewDir.y * MAX_DIST);
-			bounds.max.y = std::max(pos.y, pos.y + viewDir.y * MAX_DIST) + 1.8f;
-
-			bounds.min.z = std::min(pos.z, pos.z + viewDir.z * MAX_DIST) - .3f;
-			bounds.max.z = std::max(pos.z, pos.z + viewDir.z * MAX_DIST) + .3f;
-			initialColliders = std::move(world.getPossibleCollisions(bounds));
-		}
 
 		float closestColliderTime = 1.f / 0.f;
-
 		AABB collider;
 		glm::vec3 colliderNormal;
 
 		for(const AABB &col : initialColliders) {
 			float t = 0;
-			glm::vec3 cp, cn;
-			if(RayVsRect(viewPos, viewDir*MAX_DIST, col, cp, cn, t)) {
+			glm::ivec3 cn;
+			if(col.intersects(Ray{viewPos, viewDir}, cn, t)) {
 				if(t >= 0.f && t < closestColliderTime) {
 					collider = col;
 					colliderNormal = cn;

@@ -25,6 +25,10 @@ public:
 	World &operator=(const World&) = delete;
 
 	Chunk *getChunk(const int32_t chunkPosX, const int32_t chunkPosZ);
-	std::vector<AABB> getPossibleCollisions(const AABB &bounds);
+	const Chunk *getChunk(const int32_t chunkPosX, const int32_t chunkPosZ) const;
+
+	std::vector<AABB> getPossibleCollisions(const AABB &bounds) const;
+	bool collidesWith(const AABB &entity, const glm::vec3& displacement, glm::ivec3 &contact_normal, float &contact_time) const;
+
 	void draw(const ShaderProgram &shader);
 };

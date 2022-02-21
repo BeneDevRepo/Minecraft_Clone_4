@@ -208,7 +208,7 @@ StaticMesh StaticMesh::viewportRect() {
 }
 
 
-StaticMesh StaticMesh::cube(const bool invert, const glm::vec3 size) {
+StaticMesh StaticMesh::cube(const glm::vec3 size) {
 	constexpr uint32_t NUM_FACES = 6;
 	const int numVertices = NUM_FACES * 4; // 6 Faces * 4 Vertices/Face
 	const int numIndices = NUM_FACES * 2 * 3; // 6 Faces * 2 Triangles/Face * 3 Indices/Triangle
@@ -261,10 +261,7 @@ StaticMesh StaticMesh::cube(const bool invert, const glm::vec3 size) {
 		indices[face * 6 + 3] = face * 4 + 2;
 		indices[face * 6 + 4] = face * 4 + 3;
 		indices[face * 6 + 5] = face * 4 + 1;
-		if(invert) {
-			std::swap(indices[face * 6 + 1], indices[face * 6 + 2]);
-			std::swap(indices[face * 6 + 4], indices[face * 6 + 5]);
-		}
+
 		// indices[face * 6 + 0] = face * 4 + 0;
 		// indices[face * 6 + 1] = face * 4 + 1;
 		// indices[face * 6 + 2] = face * 4 + 2;

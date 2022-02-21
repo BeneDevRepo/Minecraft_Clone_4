@@ -6,6 +6,7 @@
 #include "OpenGL/StaticMesh.h"
 
 #include "World.h"
+#include "AABB.h"
 
 #include <cstdint>
 
@@ -44,13 +45,22 @@ public:
 		return this->pos;
 	}
 	inline glm::vec3 getViewPos() const {
-		// return this->pos + glm::vec3(0.f, 28.f / 16.f, 0.f);
 		return this->pos + glm::vec3(0.f, 1.62f, 0.f);
 	}
-	inline glm::vec3 getCenter() const {
-		// return this->pos + glm::vec3(0.f, 28.f / 16.f, 0.f);
-		return this->pos + glm::vec3(0.f, 1.8f / 2.f, 0.f);
+	static constexpr glm::vec3 getDimensions() {
+		return glm::vec3(.6f, 1.8f, .6f);
 	}
+	inline glm::vec3 getCenter() const {
+		return this->pos + glm::vec3(0.f, getDimensions().y / 2.f, 0.f);
+	}
+
+	inline Ray getViewRay() const {
+		return Ray{ getViewPos(), getViewDir() };
+	}
+	inline AABB getAABB() const {
+		return AABB::fromCenter(getCenter(), getDimensions());
+	}
+
 	inline glm::vec3 getRightHandPos() const {
 		const float handAngle = glm::radians(Yaw + 45.f);
 		glm::vec3 handDir(

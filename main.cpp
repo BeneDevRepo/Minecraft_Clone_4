@@ -174,7 +174,7 @@ int main() {
 	StaticMesh bunny = StaticMesh::cube();
 	// StaticMesh lightsource = StaticMesh::cube();
 	StaticMesh viewportRect = StaticMesh::viewportRect();
-	StaticMesh skyBox = StaticMesh::cube(false, glm::vec3(2.f));
+	StaticMesh skyBox = StaticMesh::cube(glm::vec3(2.f));
 
 	DebugRenderer debugRenderer;
 
@@ -200,7 +200,8 @@ int main() {
 		glTextureParameteri(tex, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		// glTextureStorage2D(tex, 1, GL_RGB8, width, height); // color clamped between [0.0, 1.0], 8 bit per channel
 		// glTextureStorage2D(tex, 1, GL_RGBA16F, width, height); // floating point color, not clamped, 16 bit per channel (64 bit total)
-		glTextureStorage2D(tex, 1, format, width, height); // floating point color, not clamped, less bits per channel (32 bit total)
+		// glTextureStorage2D(tex, 1, GL_R11F_G11F_B10F, width, height); // floating point color, not clamped, less bits per channel (32 bit total)
+		glTextureStorage2D(tex, 1, format, width, height);
 	};
 
 
@@ -229,7 +230,8 @@ int main() {
 
 	// <Shadowmap Framebuffer>
 	// const unsigned int SHADOW_WIDTH = 4096, SHADOW_HEIGHT = 4096;
-	const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+	const unsigned int SHADOW_WIDTH = 2048, SHADOW_HEIGHT = 2048;
+	// const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
 	GLuint shadowFBO;
 	glCreateFramebuffers(1, &shadowFBO);
 
@@ -462,11 +464,11 @@ int main() {
 			const float near_plane = 1.0f, far_plane = 100.5f;
 			glm::vec3 sunPos = player.getViewPos() - sunDir * 40.f;
 
-			const float pixelSize = 80.f / SHADOW_WIDTH;
-			sunPos.x = pixelSize * (int)(sunPos.x / pixelSize);
-			sunPos.z = pixelSize * (int)(sunPos.z / pixelSize);
+			// const float pixelSize = 80.f / SHADOW_WIDTH;
+			// sunPos.x = pixelSize * (int)(sunPos.x / pixelSize);
+			// sunPos.z = pixelSize * (int)(sunPos.z / pixelSize);
 
-			glm::mat4 lightProjection = glm::ortho(-40.0f, 40.0f, -40.0f, 40.0f, near_plane, far_plane); // left, right, bottom, top, near, far
+			glm::mat4 lightProjection = glm::ortho(-20.0f, 20.0f, -20.0f, 20.0f, near_plane, far_plane); // left, right, bottom, top, near, far
 
 			glm::mat4 lightView = glm::lookAt(  sunPos, // eye
 												sunPos + sunDir, // center
@@ -538,7 +540,14 @@ int main() {
 					playerModel = glm::rotate(playerModel, glm::radians(-player.getYaw()), glm::vec3(0.f, 1.f, 0.f));
 					glProgramUniformMatrix4fv(shaderProgram, shaderProgram.getUniformLocation("model"), 1, GL_FALSE, &playerModel[0][0]);
 					player.draw();
+
+					// DEBUG_RENRERER->box(glm::vec3(pos.x-.3f, pos.y, pos.z-.3f), glm::vec3(pos.x+.3f, pos.y+1.8f, pos.z+.3f)); // Hitbox
+					DEBUG_RENRERER->box(player.getAABB().min, player.getAABB().max); // Hitbox
 				}
+
+			// Crosshair:
+			DEBUG_RENRERER->box(player.getViewPos() + player.getViewDir() * .2f - glm::vec3(.0001f, .0001f, .0001f),
+								player.getViewPos() + player.getViewDir() * .2f + glm::vec3(.0001f, .0001f, .0001f));
 
 			// lightsourceShaderProgram.bind();
 			// 	lightsource.bind();

@@ -44,7 +44,7 @@ public:
 	uint32_t width, height;
 	int32_t mouseX, mouseY;
 	bool shouldClose, mouseCaptured; // internal state
-	bool resizable, captureMouse; // settable from outside
+	bool resizable, shouldCaptureMouse; // settable from outside
     HWND wnd;
 
 private:
@@ -56,7 +56,9 @@ private:
 	LRESULT WndProc(const UINT msg, const WPARAM wParam, const LPARAM lParam);
 
 private:
-	void pollInput(); // gets called by PollMsg(), polls RawInput messages
+	void captureMouse();
+	void releaseMouse();
+	void pollRawInput(); // gets called by PollMsg(), polls RawInput messages
 
 public:
     Window(const int width, const int height, const WindowStyle windowStyle = DEFAULT_WINDOW_STYLE);
@@ -69,6 +71,10 @@ public:
 	}
 
 	inline void setCaptureMouse(const bool capture) {
-		captureMouse = capture;
+		shouldCaptureMouse = capture;
+		if(shouldCaptureMouse)
+			captureMouse();
+		else
+			releaseMouse();
 	}
 };

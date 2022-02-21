@@ -27,7 +27,7 @@ public:
 
 	static StaticMesh loadSTL(const char *const fileName);
 	static StaticMesh viewportRect();
-	static StaticMesh cube(const bool invert = false, const glm::vec3 size = glm::vec3(1.f)); // size = diameter
+	static StaticMesh cube(const glm::vec3 size = glm::vec3(1.f)); // size = diameter
 
 	inline void bind() const {
 		glBindVertexArray(VAO);

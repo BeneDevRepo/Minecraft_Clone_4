@@ -23,50 +23,31 @@ vec3 aces(vec3 x) {
 // }
 
 out vec4 FragColor;
+
 // Internal:
 // in gl_FrontFacing
 // in gl_FragCoord // screen space coordinates (absolute)
 // out gl_FragDepth // manually set fragment depth
+
 void main() {
 
-	// FragColor = vec4(1.0) - texture(screen, UVs);
-	FragColor = texture(screen, UVs);
-	// FragColor = gl_FragCoord / 800.;
-	// FragColor.xyz /= 4.;
-
-	// Pseudobloom:
-	// FragColor = vec4(0.);
-	// FragColor += texture(screen, UVs+vec2(-1., -1.)*.002);
-	// FragColor += texture(screen, UVs+vec2( 0., -1.)*.002);
-	// FragColor += texture(screen, UVs+vec2( 1., -1.)*.002);
-	// FragColor += texture(screen, UVs+vec2(-1.,  0.)*.002);
-	// FragColor += texture(screen, UVs+vec2( 0.,  0.)*.002);
-	// FragColor += texture(screen, UVs+vec2( 1.,  0.)*.002);
-	// FragColor += texture(screen, UVs+vec2(-1.,  1.)*.002);
-	// FragColor += texture(screen, UVs+vec2( 0.,  1.)*.002);
-	// FragColor += texture(screen, UVs+vec2( 1.,  1.)*.002);
-	// FragColor /= 9.;
-
-
-	// ----------------- Gamma Correction + Tone Mapping:
-	// float gamma = 2.2;
-    // FragColor.rgb = pow(FragColor.rgb, vec3(1.0/gamma));
-
-	const float gamma = 2.2;
-    vec3 hdrColor = FragColor.rgb;
+    vec3 hdrColor = texture(screen, UVs).rgb;
   
-    // // reinhard tone mapping
+    // reinhard tone mapping:
     // vec3 mapped = hdrColor / (hdrColor + vec3(1.0));
 
-	// // exposure tone mapping
+	// exposure tone mapping:
 	// float exposure = 1.; // variable, z.B. 1., 5., .1.
     // vec3 mapped = vec3(1.0) - exp(-hdrColor * exposure);
 
-    // ACES tone mapping
+    // ACES tone mapping:
     vec3 mapped = aces(hdrColor);
 
-    // gamma correction 
+    // gamma correction:
+	const float gamma = 2.2;
     mapped = pow(mapped, vec3(1.0 / gamma));
   
     FragColor = vec4(mapped, 1.0);
+
+	// FragColor.rgb = vec3(1.0) - FragColor.rgb; // Invert output colors
 }

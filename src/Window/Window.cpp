@@ -27,8 +27,10 @@ Window::Window(const int width, const int height, const WindowStyle windowStyle)
 			[](void *const win, const UINT msg, const WPARAM wParam, const LPARAM lParam)->LRESULT {
 				return DefWindowProc(((Window*)win)->wnd, msg, wParam, lParam);
 			}, this ),
-		resizable(true), captureMouse(false),
+		resizable(true), 
 		shouldClose(false),
+
+		shouldCaptureMouse(false), mouseCaptured(false),
 
 		width(width), height(height),
 		mouseX(0), mouseY(0),
@@ -90,9 +92,62 @@ Window::~Window() {
 	}
 }
 
-void Window::pollInput() {
-	alignas(sizeof(void*)) static RAWINPUT buffers[16];
-	UINT size = 16 * sizeof(RAWINPUT);
+void Window::captureMouse() {
+	if(mouseCaptured) // Don't try to capture Mouse if it's already captured...
+		return;
+
+	RAWINPUTDEVICE Rid[1];
+	Rid[0].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
+	Rid[0].usUsage = 0x02;              // HID_USAGE_GENERIC_MOUSE
+	Rid[0].dwFlags = RIDEV_NOLEGACY | RIDEV_CAPTUREMOUSE; // | RIDEV_DEVNOTIFY;    // adds mouse
+	Rid[0].hwndTarget = wnd; // wnd apparently needed for RIDEV_CAPTUREMOUSE to work
+
+	// Rid[1].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
+	// Rid[1].usUsage = 0x06;              // HID_USAGE_GENERIC_KEYBOARD
+	// Rid[1].dwFlags = RIDEV_NOLEGACY;    // adds keyboard and also ignores legacy keyboard messages
+	// Rid[1].hwndTarget = 0;
+
+	if (RegisterRawInputDevices(Rid, 1, sizeof(RAWINPUTDEVICE)) == FALSE) {
+		printf("Error registering Raw Input Device: %d\n", GetLastError());
+		exit(1);
+	}
+
+	while(ShowCursor(false) >= 0); // make cursor invisible
+
+	mouseCaptured = true;
+}
+
+void Window::releaseMouse() {
+	if(!mouseCaptured) // Don't try to release Mouse if it hasn't even been captured...
+		return;
+
+	RAWINPUTDEVICE Rid[1];
+	Rid[0].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
+	Rid[0].usUsage = HID_USAGE_GENERIC_MOUSE;              // HID_USAGE_GENERIC_MOUSE = 0x02
+	Rid[0].dwFlags = RIDEV_REMOVE; // hopefully removes mouse
+	Rid[0].hwndTarget = 0; // must be 0 for RIDEV_REMOVE
+
+	if (RegisterRawInputDevices(Rid, 1, sizeof(RAWINPUTDEVICE)) == FALSE) {
+		printf("Error removing Raw Input Device: %d\n", GetLastError());
+		exit(1);
+	}
+
+	while(ShowCursor(true) < 0); // make cursor visible
+
+	// always Release Mouse cursor in the center of the Window:
+	POINT center{ (int32_t)(width/2), (int32_t)(height/2) };
+	ClientToScreen(wnd, &center);
+	SetCursorPos(center.x, center.y);
+
+	mouseCaptured = false;
+}
+
+
+void Window::pollRawInput() {
+	constexpr uint16_t NUM_BUFFERS = 16;
+	alignas(sizeof(void*)) thread_local static RAWINPUT buffers[NUM_BUFFERS]; // Buffer to read Inputs into
+
+	UINT size = NUM_BUFFERS * sizeof(RAWINPUT);
 	const int numInputs = GetRawInputBuffer(buffers, &size, sizeof(RAWINPUTHEADER));
 
 	for(int i = 0; i < numInputs; i++) {
@@ -181,7 +236,8 @@ void Window::pollInput() {
 }
 
 void Window::pollMsg() {
-	pollInput();
+	if(mouseCaptured)
+		pollRawInput();
 
 	SwitchToFiber(messageFiber);
 }
@@ -233,87 +289,32 @@ LRESULT Window::WndProc(const UINT msg, const WPARAM wParam, const LPARAM lParam
 			std::cout << "Hotkey Pressed: " << wParam << "\n";
 			break;
 
-		// case WM_LBUTTONDOWN:
-		// case WM_RBUTTONDOWN:
-		// case WM_MBUTTONDOWN:
-		// 	SetCapture(wnd);
-		// 	break;
 
-		// case WM_LBUTTONUP:
-		// case WM_RBUTTONUP:
-		// case WM_MBUTTONUP:
-		// 	if(!captureMouse)
-		// 		ReleaseCapture();
-		// 	break;
-		
-		// <Testing>
+		case WM_LBUTTONDOWN:
+		case WM_RBUTTONDOWN:
+		case WM_MBUTTONDOWN:
+			if(!shouldCaptureMouse && !mouseCaptured) // when using legacy mouse input, capture Mouse while Mousebutton is pressed.
+				SetCapture(wnd);
+			break;
+
+		case WM_LBUTTONUP:
+		case WM_RBUTTONUP:
+		case WM_MBUTTONUP:
+			if(!shouldCaptureMouse && !mouseCaptured) // when using legacy mouse input, capture Mouse while Mousebutton is pressed.
+				ReleaseCapture();
+			break;
+
+
 		case WM_SETFOCUS:
-			if(captureMouse) {
-				RAWINPUTDEVICE Rid[1];
-
-				Rid[0].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
-				Rid[0].usUsage = 0x02;              // HID_USAGE_GENERIC_MOUSE
-				Rid[0].dwFlags = RIDEV_NOLEGACY | RIDEV_CAPTUREMOUSE; // | RIDEV_DEVNOTIFY;    // adds mouse
-				Rid[0].hwndTarget = wnd; // wnd apparently needed for RIDEV_CAPTUREMOUSE to work
-
-				// Rid[1].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
-				// Rid[1].usUsage = 0x06;              // HID_USAGE_GENERIC_KEYBOARD
-				// Rid[1].dwFlags = RIDEV_NOLEGACY;    // adds keyboard and also ignores legacy keyboard messages
-				// Rid[1].hwndTarget = 0;
-
-				if (RegisterRawInputDevices(Rid, 1, sizeof(RAWINPUTDEVICE)) == FALSE) {
-					printf("Error registering Raw Input Device: %d\n", GetLastError());
-					exit(1);
-				}
-
-				// SetCursor(LoadCursor(NULL, IDC_ARROW));
-				// SetCursor(LoadCursor(NULL, IDC_CROSS));
-				// SetClassLongPtr(wnd, GCLP_HCURSOR, (LONG_PTR) NULL);  // new cursor 
-				// CURSORINFO cursorinfo;
-				// cursorinfo.cbSize = sizeof(CURSORINFO);
-				// GetCursorInfo(&cursorinfo);
-				while(ShowCursor(false) >= 0);
-				mouseCaptured = true;
-			}
-			// if(captureMouse) {
-			// 	SetCapture(wnd);
-			// 	mouseCaptured = true;
-			// 	SetCursor(NULL);
-			// }
-			std::cout << "WM_SETFOCUS\n";
+			if(shouldCaptureMouse)
+				captureMouse();
+			// std::cout << "WM_SETFOCUS\n";
 			break;
 
 		case WM_KILLFOCUS:
-			// ReleaseCapture();
-			// mouseCaptured = false;
-			// SetCursor(LoadCursor(NULL, IDC_ARROW));
-			if(mouseCaptured) {
-				RAWINPUTDEVICE Rid[1];
-
-				Rid[0].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
-				Rid[0].usUsage = HID_USAGE_GENERIC_MOUSE;              // HID_USAGE_GENERIC_MOUSE = 0x02
-				Rid[0].dwFlags = RIDEV_REMOVE; // hopefully removes mouse
-				Rid[0].hwndTarget = 0; // must be 0 for RIDEV_REMOVE
-
-				if (RegisterRawInputDevices(Rid, 1, sizeof(RAWINPUTDEVICE)) == FALSE) {
-					printf("Error removing Raw Input Device: %d\n", GetLastError());
-					exit(1);
-				}
-
-				// SetClassLongPtr(wnd, GCLP_HCURSOR, (LONG_PTR) IDC_ARROW);  // new cursor 
-				// SetCursor(LoadCursor(NULL, IDC_ARROW));
-
-				while(ShowCursor(true) < 0);
-				POINT center{ (int32_t)(width/2), (int32_t)(height/2) };
-				ClientToScreen(wnd, &center);
-				SetCursorPos(center.x, center.y);
-
-				// ShowCursor(true);
-				mouseCaptured = false;
-			}
-			std::cout << "WM_KILLFOCUS\n";
+			releaseMouse();
+			// std::cout << "WM_KILLFOCUS\n";
 			break;
-		// </Testing>
 
 		// case WM_MOUSEMOVE:
 		// 	if(captureMouse && mouseCaptured) {

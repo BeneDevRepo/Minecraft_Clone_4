@@ -27,12 +27,19 @@ World::World():
 World::~World() {
 }
 
+
 Chunk *World::getChunk(const int32_t chunkPosX, const int32_t chunkPosZ) {
 	std::unordered_map<int64_t, Chunk*>::iterator it = chunks.find(chunkPosToID(chunkPosX, chunkPosZ));
 	return (it == chunks.end()) ? nullptr : it->second;
 }
 
-std::vector<AABB> World::getPossibleCollisions(const AABB &bounds) {
+const Chunk *World::getChunk(const int32_t chunkPosX, const int32_t chunkPosZ) const {
+	std::unordered_map<int64_t, Chunk*>::const_iterator it = chunks.find(chunkPosToID(chunkPosX, chunkPosZ));
+	return (it == chunks.end()) ? nullptr : it->second;
+}
+
+
+std::vector<AABB> World::getPossibleCollisions(const AABB &bounds) const {
 	std::vector<AABB> out;
 	for(int y = std::floor(bounds.min.y); y <= std::floor(bounds.max.y); y++) {
 		for(int x = std::floor(bounds.min.x); x <= std::floor(bounds.max.x); x++) {
@@ -43,23 +50,45 @@ std::vector<AABB> World::getPossibleCollisions(const AABB &bounds) {
 
 				if(chunk == nullptr)
 					continue;
-				
+
 				const int relBlockX = x - chunkX * 16;
 				const int relBlockZ = z - chunkZ * 16;
-				
 
 				if(chunk->getBlock(relBlockX, y, relBlockZ).type == BlockType::AIR)
 					continue;
 
 				const glm::vec3 blockPos(x, y, z);
-				AABB blockAABB = {blockPos, blockPos + glm::vec3(1.f, 1.f, 1.f)};
+				const AABB blockAABB = {blockPos, blockPos + glm::vec3(1.f, 1.f, 1.f)};
 
-				out.push_back(blockAABB);
+				if(bounds.collidesWith(blockAABB))
+					out.push_back(blockAABB);
 			}
 		}
 	}
 	return out;
 }
+
+bool World::collidesWith(const AABB &entity, const glm::vec3& displacement, glm::ivec3 &contact_normal, float &contact_time) const {
+	const AABB movementBounds = AABB::fromCenter(entity.center() + displacement / 2.f, entity.dimensions() + glm::abs(displacement));
+	const std::vector<AABB> initialColliders = getPossibleCollisions(movementBounds);
+
+	contact_time = 2.f;
+
+	for(const AABB &collider_cur : initialColliders) {
+		float t_cur;
+		glm::ivec3 contact_normal_cur;
+		if(DynamicRectVsRect(displacement, entity, collider_cur, contact_normal_cur, t_cur)) {
+			if(t_cur >= 0.f && t_cur < contact_time) {
+				contact_time = t_cur;
+				contact_normal = contact_normal_cur;
+			}
+		}
+	}
+
+	return contact_time < 1.f;
+}
+
+
 
 void World::draw(const ShaderProgram &shader) {
 	for(auto it = chunks.begin(); it != chunks.end(); it++)
