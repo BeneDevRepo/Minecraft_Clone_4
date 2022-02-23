@@ -18,13 +18,13 @@ private:
 	bool dirty;
 
 public:
-	int32_t chunkPosX, chunkPosZ;
+	int64_t chunkPosX, chunkPosZ;
 
 public:
 	StaticMesh mesh;
 
 public:
-	Chunk(const int32_t chunkPosX, const int32_t chunkPosZ);
+	Chunk(const int64_t chunkPosX, const int64_t chunkPosZ);
 	~Chunk();
 
 	Chunk(const Chunk&) = delete;
@@ -34,7 +34,11 @@ public:
 	Chunk &operator=(Chunk&& other);
 
 	void generateMesh(const Chunk *const xMinus, const Chunk *const xPlus, const Chunk *const zMinus, const Chunk *const zPlus);
-	Block getBlock(const uint8_t x, const uint8_t y, const uint8_t z) const;
+
+	inline Block getBlock(const uint8_t x, const uint8_t y, const uint8_t z) const {
+		return blocks[x][y][z];
+	}
+
 	void setBlock(World &world, const uint8_t x, const uint8_t y, const uint8_t z, const Block block);
 
 	inline bool isDirty() const {

@@ -34,6 +34,9 @@
 
 // - - Minecraft renderer / chunk system
 
+// - Text
+// - ECS
+
 // - OpenGL Raytracer
 // - Atmospheric Scattering
 // - GUI
@@ -61,9 +64,6 @@ https://learnopengl.com/Advanced-Lighting/Deferred-Shading
 https://learnopengl.com/PBR/IBL/Specular-IBL
 quixels megascans (real scans)
 */
-
-
-// ---  FIX COLLISION DETECTION (search for and resolve closest Collision per Axis based on Collision Normal)
 
 
 DebugRenderer *DEBUG_RENRERER;
@@ -230,8 +230,8 @@ int main() {
 
 	// <Shadowmap Framebuffer>
 	// const unsigned int SHADOW_WIDTH = 4096, SHADOW_HEIGHT = 4096;
-	const unsigned int SHADOW_WIDTH = 2048, SHADOW_HEIGHT = 2048;
-	// const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+	// const unsigned int SHADOW_WIDTH = 2048, SHADOW_HEIGHT = 2048;
+	const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
 	GLuint shadowFBO;
 	glCreateFramebuffers(1, &shadowFBO);
 
@@ -328,6 +328,12 @@ int main() {
 		player.handleMouseInput(dt, win.win.mouseX, win.win.mouseY);
 
 		player.update(dt, world);
+
+		world.loadChunksAround({
+				(int64_t)std::floor(player.getFootPos().x / 16),
+				0,
+				(int64_t)std::floor(player.getFootPos().z / 16),
+			});
 
 		bool sizeChanged = fbWidth != win.win.width || fbHeight != win.win.height;
 		if(sizeChanged) {

@@ -195,35 +195,23 @@ void Window::pollRawInput() {
 						mouseX += mouse.lLastX;
 						mouseY += mouse.lLastY;
 					}
-					// else {
-					// 	printf(
-					// 		"Mouse: usFlags=%04x ulButtons=%04x usButtonFlags=%04x usButtonData=%04x ulRawButtons=%04x lLastX=%04x lLastY=%04x ulExtraInformation=%04x\n",
-					// 		mouse.usFlags,
-					// 		mouse.ulButtons,
-					// 		mouse.usButtonFlags,
-					// 		mouse.usButtonData,
-					// 		mouse.ulRawButtons,
-					// 		mouse.lLastX,
-					// 		mouse.lLastY,
-					// 		mouse.ulExtraInformation);
-					// }
 
-					if(mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_DOWN)
-						printf("Left down\n");
-					if(mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_DOWN)
-						printf("Right down\n");
-					if(mouse.usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_DOWN)
-						printf("Middle down\n");
+					// if(mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_DOWN)
+					// 	printf("Left down\n");
+					// if(mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_DOWN)
+					// 	printf("Right down\n");
+					// if(mouse.usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_DOWN)
+					// 	printf("Middle down\n");
 
-					if(mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_UP)
-						printf("Left UP\n");
-					if(mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_UP)
-						printf("Right UP\n");
-					if(mouse.usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_UP)
-						printf("Middle UP\n");
+					// if(mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_UP)
+					// 	printf("Left UP\n");
+					// if(mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_UP)
+					// 	printf("Right UP\n");
+					// if(mouse.usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_UP)
+					// 	printf("Middle UP\n");
 					
-					if(mouse.usButtonFlags & RI_MOUSE_WHEEL)
-						printf("Mouse Wheel: %hd\n", (SHORT)mouse.usButtonData);
+					// if(mouse.usButtonFlags & RI_MOUSE_WHEEL)
+					// 	printf("Mouse Wheel: %hd\n", (SHORT)mouse.usButtonData);
 
 				}
 				break;

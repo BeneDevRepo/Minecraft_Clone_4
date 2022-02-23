@@ -5,6 +5,8 @@
 #include "AABB.h"
 
 #include "OpenGL/DebugRenderer.h"
+#include <iostream>
+
 
 
 Player::Player(const float x, const float y, const float z, const float FOV):
@@ -62,31 +64,6 @@ void Player::handleMouseInput(const float dt, const int mouseX, const int mouseY
 
 
 
-// bool collideWithWorld(const AABB &entity, const glm::vec3 displacement, const World &world, glm::ivec3 &contact_normal, float &contact_time) {
-// 	const AABB movementBounds = AABB::fromCenter(entity.center() + displacement / 2.f, entity.dimensions() + glm::abs(displacement));
-// 	const std::vector<AABB> initialColliders = world.getPossibleCollisions(movementBounds);
-// 	contact_time = 2.f;
-
-// 	for(const AABB &collider_cur : initialColliders) {
-// 		float t_cur;
-// 		glm::ivec3 contact_normal_cur;
-// 		if(DynamicRectVsRect(displacement, entity, collider_cur, contact_normal_cur, t_cur)) {
-// 			if(t_cur >= 0.f && t_cur < contact_time) {
-// 				contact_time = t_cur;
-// 				contact_normal = contact_normal_cur;
-// 			}
-// 		}
-// 	}
-
-// 	return contact_time < 1.f;
-// }
-
-struct Bullet {
-	glm::vec3 pos, vel;
-};
-
-std::vector<Bullet> bullets;
-
 
 void Player::update(const float dt, World& world) {
 	static bool onGround = false;
@@ -123,7 +100,7 @@ void Player::update(const float dt, World& world) {
 
 	// Input:
 	if(glm::length(inputDir) > .001f)
-		acc2D += glm::normalize(inputDir) * ((GetAsyncKeyState(VK_CONTROL)&0x8000) ? 100 : 50);
+		acc2D += glm::normalize(inputDir) * ((GetAsyncKeyState(VK_CONTROL)&0x8000) ? 100.f : 50.f);
 
 	vel += glm::vec3(acc2D.x, 0.f, acc2D.y) * dt;
 
@@ -140,15 +117,8 @@ void Player::update(const float dt, World& world) {
 
 
 
-
-
-
-	/************************
-	 * COLLISION RESOLUTION *
-	 ************************/
-
+	// <collision resolution>
 	onGround = false;
-
 
 	for(int i = 0; i < 3; i++) {
 		float contact_time;
@@ -170,9 +140,84 @@ void Player::update(const float dt, World& world) {
 		// DEBUG_RENRERER->box(collider.min, collider.max); // ####################   DEBUG   #####################
 	}
 
-	// Update the player position with the modified velocity
-	pos += vel * dt;
+	pos += vel * dt; // Update the player position on all Axis that haven't collided with anything
+	// </collision resolution>
 
+
+
+
+
+
+
+	// <Test Bullets>
+	struct Bullet {
+		glm::vec3 pos, vel;
+		int lifetime = 240 * 10;
+		inline AABB getAABB() const { return AABB::fromCenter(pos, glm::vec3(.5f)); }
+	};
+	static std::vector<Bullet> bullets;
+
+
+	static int lastShot = 0; lastShot--;
+	if(GetAsyncKeyState(VK_MBUTTON) & 0x8000) {
+		if(lastShot <= 0) {
+			bullets.push_back({getViewPos(), getViewDir() * 50.f});
+			lastShot = 240 / 10; // 10 Shots Per Second
+		}
+	} else
+		lastShot = 0;
+
+
+	constexpr float EXPLOSION_RADIUS = 20.f;
+
+	for(std::vector<Bullet>::iterator it = bullets.begin(); it != bullets.end(); ) {
+		Bullet &bullet = *it;
+
+		if(bullet.lifetime-- == 0) {
+			bullets.erase(it);
+			continue;
+		}
+
+		float contact_time;
+		glm::ivec3 contact_normal;
+
+		if(world.collidesWith(bullet.getAABB(), bullet.vel * dt, contact_normal, contact_time)) {
+
+			const AABB expAABB = AABB::fromCenter(bullet.pos, glm::vec3(EXPLOSION_RADIUS * 2));
+			const std::vector<AABB> blocks = world.getPossibleCollisions(expAABB);
+			for(const AABB &col : blocks) {
+				const glm::vec3 blockPos = col.min;
+				const int32_t x = std::floor(blockPos.x);
+				const int32_t y = std::floor(blockPos.y);
+				const int32_t z = std::floor(blockPos.z);
+
+				const float blockDist = glm::length(blockPos - bullet.pos);
+				if(blockDist > EXPLOSION_RADIUS) continue;
+				if(blockDist > EXPLOSION_RADIUS-2 && (rand() % 5 == 0)) continue;
+
+				const int chunkX = std::floor(x / 16.f);
+				const int chunkZ = std::floor(z / 16.f);
+				// Chunk *const chunk = world.getChunk(chunkX, chunkZ);
+				Chunk *const chunk = world.getChunk({chunkX, 0, chunkZ});
+
+				if(chunk == nullptr) continue;
+
+				const int relBlockX = x - chunkX * 16;
+				const int relBlockZ = z - chunkZ * 16;
+
+				chunk->setBlock(world, relBlockX, y, relBlockZ, { BlockType::AIR });
+			}
+
+			bullets.erase(it);
+			continue;
+		}
+
+		bullet.pos += bullet.vel * dt; // Update bullet position
+
+		DEBUG_RENRERER->box(bullet.getAABB().min, bullet.getAABB().max); // ####################   DEBUG   #####################
+		++it;
+	}
+	// </Test Bullets>
 
 
 
@@ -183,67 +228,131 @@ void Player::update(const float dt, World& world) {
 
 
 	// Object Picking:
-	{
-		const float MAX_DIST = 10.f;
-
+	 {
 		const glm::vec3 viewPos = getViewPos();
 		const glm::vec3 viewDir = getViewDir();
 
-		const AABB bounds = AABB::fromCenter(getCenter() + viewDir * MAX_DIST / 2.f, glm::abs(viewDir * MAX_DIST)); // bounding Box of View Ray
-		const std::vector<AABB> initialColliders = world.getPossibleCollisions(bounds); // all Blocks within Viewray-Boundingbox
+		// glm::ivec3 currentBlock = glm::trunc(viewPos);
+		glm::ivec3 currentBlock = glm::floor(viewPos);
+		const glm::vec3 deltaT = glm::abs(1.f / viewDir);
+		bool hit = false;
+		int side = 0;
 
+		glm::ivec3 step {0, 0, 0};
+		glm::vec3 sideDist;
 
-		float closestColliderTime = 1.f / 0.f;
-		AABB collider;
-		glm::vec3 colliderNormal;
-
-		for(const AABB &col : initialColliders) {
-			float t = 0;
-			glm::ivec3 cn;
-			if(col.intersects(Ray{viewPos, viewDir}, cn, t)) {
-				if(t >= 0.f && t < closestColliderTime) {
-					collider = col;
-					colliderNormal = cn;
-					closestColliderTime = t;
-				}
-			}
+		//calculate step and initial sideDist
+		if (viewDir.x < 0) {
+			step.x = -1;
+			sideDist.x = (viewPos.x - currentBlock.x) * deltaT.x;
+		} else {
+			step.x = 1;
+			sideDist.x = (currentBlock.x + 1.0 - viewPos.x) * deltaT.x;
 		}
 
-		if(closestColliderTime < 100) {
-			// Block Breaking:
+		if (viewDir.y < 0) {
+			step.y = -1;
+			sideDist.y = (viewPos.y - currentBlock.y) * deltaT.y;
+		} else {
+			step.y = 1;
+			sideDist.y = (currentBlock.y + 1.0 - viewPos.y) * deltaT.y;
+		}
+
+		if (viewDir.z < 0) {
+			step.z = -1;
+			sideDist.z = (viewPos.z - currentBlock.z) * deltaT.z;
+		} else {
+			step.z = 1;
+			sideDist.z = (currentBlock.z + 1.0 - viewPos.z) * deltaT.z;
+		}
+
+		for(int i = 0; i < 500 && !hit; i++) {
+			// float t = min(sideDistX, sideDistY);
+
+			//jump to next cube
+			if (sideDist.x < sideDist.y && sideDist.x < sideDist.z) {
+				sideDist.x += deltaT.x;
+				currentBlock.x += step.x;
+				side = 0;
+			} else if (sideDist.y < sideDist.z) {
+				sideDist.y += deltaT.y;
+				currentBlock.y += step.y;
+				side = 1;
+			} else {
+				sideDist.z += deltaT.z;
+				currentBlock.z += step.z;
+				side = 2;
+			}
+
+			//Check if ray has hit a wall
+			const ChunkPos chunkPos{ (int64_t)std::floor(currentBlock.x / 16.f), 0, (int64_t)std::floor(currentBlock.z / 16.f) };
+			Chunk *const chunk = world.getChunk(chunkPos);
+			if(chunk == nullptr)
+				continue;
+
+			const glm::ivec3 blockPosRel(
+				currentBlock.x - chunkPos.x * 16,
+				currentBlock.y,
+				currentBlock.z - chunkPos.z * 16);
+
+			if(chunk->getBlock(blockPosRel.x, blockPosRel.y, blockPosRel.z).type != BlockType::AIR) {
+				// glm::ivec3 normal(0);
+				// normal[side] = viewDir[side] > 0 ? 1 : -1;
+				// const glm::ivec3 blockInFront = currentBlock + normal;
+
+
+				// DEBUG_RENRERER->box(
+				// 		glm::vec3(currentBlock.x, currentBlock.y, currentBlock.z),
+				// 		glm::vec3(currentBlock.x+1, currentBlock.y+1, currentBlock.z+1)
+				// 	);
+
+				// if(GetAsyncKeyState(VK_LBUTTON) & 0x8000)
+				// 	chunk->setBlock(world, blockPosRel.x, blockPosRel.y, blockPosRel.z, {BlockType::AIR});
+				hit = true;
+			}
+		}
+		if(hit) {
+			DEBUG_RENRERER->box(
+					glm::vec3(currentBlock.x, currentBlock.y, currentBlock.z),
+					glm::vec3(currentBlock.x+1, currentBlock.y+1, currentBlock.z+1)
+				);
+
 			if(GetAsyncKeyState(VK_LBUTTON) & 0x8000) {
-				const int chunkX = std::floor((collider.min.x + .5f) / 16.f);
-				const int chunkZ = std::floor((collider.min.z + .5f) / 16.f);
-				Chunk *const chunk = world.getChunk(chunkX, chunkZ);
+				const ChunkPos chunkPos{ (int64_t)std::floor(currentBlock.x / 16.f), 0, (int64_t)std::floor(currentBlock.z / 16.f) };
+				Chunk *const chunk = world.getChunk(chunkPos);
+
 				if(chunk != nullptr) {
-					const int blockX = std::floor(collider.min.x + .5f) - chunkX * 16;
-					const int blockY = std::floor(collider.min.y + .5f);
-					const int blockZ = std::floor(collider.min.z + .5f) - chunkZ * 16;
-					chunk->setBlock(world, blockX, blockY, blockZ, {BlockType::AIR});
+					const glm::ivec3 blockPosRel(
+						currentBlock.x - chunkPos.x * 16,
+						currentBlock.y,
+						currentBlock.z - chunkPos.z * 16);
+
+					chunk->setBlock(world, blockPosRel.x, blockPosRel.y, blockPosRel.z, {BlockType::AIR});
 				}
 			}
 
-			// Block Placement:
-			static int ticksSinceLastPlacement = 0; ticksSinceLastPlacement++;
-			if(GetAsyncKeyState(VK_RBUTTON) & 0x8000) {
-				if(ticksSinceLastPlacement > 120) {
-					const int chunkX = std::floor((collider.min.x + colliderNormal.x + .5f) / 16.f);
-					const int chunkZ = std::floor((collider.min.z + colliderNormal.z + .5f) / 16.f);
-					Chunk *const chunk = world.getChunk(chunkX, chunkZ);
-					if(chunk != nullptr) {
-						const int blockX = std::floor(collider.min.x + colliderNormal.x + .5f) - chunkX * 16;
-						const int blockY = std::floor(collider.min.y + colliderNormal.y + .5f);
-						const int blockZ = std::floor(collider.min.z + colliderNormal.z + .5f) - chunkZ * 16;
-						if(blockY >= 0 && blockY < 256) {
-							chunk->setBlock(world, blockX, blockY, blockZ, {BlockType::GRASS});
-							ticksSinceLastPlacement = 0;
-						}
-					}
-				}
-			} else
-				ticksSinceLastPlacement = 200;
+			glm::ivec3 normal(0);
+			normal[side] = viewDir[side] > 0 ? -1 : 1;
+			const glm::ivec3 targetBlock = currentBlock + normal;
 
-			// DEBUG_RENRERER->box(collider.min, collider.max); // highlight block at cursor
+			DEBUG_RENRERER->box(
+					glm::vec3(targetBlock.x, targetBlock.y, targetBlock.z),
+					glm::vec3(targetBlock.x+1, targetBlock.y+1, targetBlock.z+1)
+				);
+
+			if(GetAsyncKeyState(VK_RBUTTON) & 0x8000) {
+				const ChunkPos chunkPos{ (int64_t)std::floor(targetBlock.x / 16.f), 0, (int64_t)std::floor(targetBlock.z / 16.f) };
+				Chunk *const chunk = world.getChunk(chunkPos);
+
+				if(chunk != nullptr) {
+					const glm::ivec3 blockPosRel(
+						targetBlock.x - chunkPos.x * 16,
+						targetBlock.y,
+						targetBlock.z - chunkPos.z * 16);
+
+					chunk->setBlock(world, blockPosRel.x, blockPosRel.y, blockPosRel.z, {BlockType::GRASS});
+				}
+			}
 		}
 	}
 }

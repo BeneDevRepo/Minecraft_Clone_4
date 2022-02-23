@@ -3,6 +3,7 @@
 #include <iostream> // Debug
 
 #include <tuple>
+// #include <algorithm>
 
 #include "glm/ext/matrix_transform.hpp"
 
@@ -11,31 +12,66 @@ World::World():
 		chunks() {
 	for(int x = -renderDistance; x <= renderDistance; x++) {
 		for(int z = -renderDistance; z <= renderDistance; z++) {
-			chunks.insert({chunkPosToID(x, z), new Chunk{ x, z } });
+			chunks.insert({ChunkPos{x, 0, z}, new Chunk{ x, z } });
 		}
 	}
 
-	for(auto it = chunks.begin(); it != chunks.end(); it++)
-		it->second->generateMesh(
-			getChunk(it->second->chunkPosX-1, it->second->chunkPosZ),
-			getChunk(it->second->chunkPosX+1, it->second->chunkPosZ),
-			getChunk(it->second->chunkPosX,   it->second->chunkPosZ-1),
-			getChunk(it->second->chunkPosX,   it->second->chunkPosZ+1)
-		);
+	// for(auto it = chunks.begin(); it != chunks.end(); it++)
+	// 	it->second->generateMesh(
+	// 		getChunk({it->second->chunkPosX-1, 0, it->second->chunkPosZ}),
+	// 		getChunk({it->second->chunkPosX+1, 0, it->second->chunkPosZ}),
+	// 		getChunk({it->second->chunkPosX,   0, it->second->chunkPosZ-1}),
+	// 		getChunk({it->second->chunkPosX,   0, it->second->chunkPosZ+1})
+	// 	);
 }
 
 World::~World() {
 }
 
 
-Chunk *World::getChunk(const int32_t chunkPosX, const int32_t chunkPosZ) {
-	std::unordered_map<int64_t, Chunk*>::iterator it = chunks.find(chunkPosToID(chunkPosX, chunkPosZ));
+// Chunk *World::getChunk(const int32_t chunkPosX, const int32_t chunkPosZ) {
+// 	std::unordered_map<int64_t, Chunk*>::iterator it = chunks.find(chunkPosToID(chunkPosX, chunkPosZ));
+// 	return (it == chunks.end()) ? nullptr : it->second;
+// }
+
+// const Chunk *World::getChunk(const int32_t chunkPosX, const int32_t chunkPosZ) const {
+// 	std::unordered_map<int64_t, Chunk*>::const_iterator it = chunks.find(chunkPosToID(chunkPosX, chunkPosZ));
+// 	return (it == chunks.end()) ? nullptr : it->second;
+// }
+Chunk *World::getChunk(const ChunkPos &chunkPos) {
+	std::unordered_map<ChunkPos, Chunk*>::iterator it = chunks.find(chunkPos);
 	return (it == chunks.end()) ? nullptr : it->second;
 }
 
-const Chunk *World::getChunk(const int32_t chunkPosX, const int32_t chunkPosZ) const {
-	std::unordered_map<int64_t, Chunk*>::const_iterator it = chunks.find(chunkPosToID(chunkPosX, chunkPosZ));
+const Chunk *World::getChunk(const ChunkPos &chunkPos) const {
+	std::unordered_map<ChunkPos, Chunk*>::const_iterator it = chunks.find(chunkPos);
 	return (it == chunks.end()) ? nullptr : it->second;
+}
+
+void World::loadChunksAround(const ChunkPos &center) {
+	for(int x = -renderDistance; x <= renderDistance; x++) {
+		for(int z = -renderDistance; z <= renderDistance; z++) {
+			ChunkPos current{ center.x + x, 0, center.z + z };
+			if(getChunk(current) == nullptr)
+				chunks.insert({current, new Chunk{ current.x, current.z } });
+		}
+	}
+	for (auto i = chunks.begin(), last = chunks.end(); i != last; ) {
+		if (i->second->chunkPosX < center.x - renderDistance
+			|| i->second->chunkPosX > center.x + renderDistance
+			|| i->second->chunkPosZ < center.z - renderDistance
+			|| i->second->chunkPosZ > center.z + renderDistance) {
+			delete i->second;
+			i = chunks.erase(i);
+		} else {
+			++i;
+		}
+	}
+	// std::erase_if(chunks, [](const auto& item)->bool {
+	// 			auto const& [key, value] = item;
+	// 			return value.x;
+	// 		}
+	// 	);
 }
 
 
@@ -46,7 +82,8 @@ std::vector<AABB> World::getPossibleCollisions(const AABB &bounds) const {
 			for(int z = std::floor(bounds.min.z); z <= std::floor(bounds.max.z); z++) {
 				const int chunkX = std::floor(x / 16.f);
 				const int chunkZ = std::floor(z / 16.f);
-				const Chunk *chunk = getChunk(chunkX, chunkZ);
+				// const Chunk *chunk = getChunk(chunkX, chunkZ);
+				const Chunk *chunk = getChunk({chunkX, 0, chunkZ});
 
 				if(chunk == nullptr)
 					continue;
@@ -94,10 +131,14 @@ void World::draw(const ShaderProgram &shader) {
 	for(auto it = chunks.begin(); it != chunks.end(); it++)
 		if(it->second->isDirty())
 			it->second->generateMesh(
-				getChunk(it->second->chunkPosX-1, it->second->chunkPosZ),
-				getChunk(it->second->chunkPosX+1, it->second->chunkPosZ),
-				getChunk(it->second->chunkPosX,   it->second->chunkPosZ-1),
-				getChunk(it->second->chunkPosX,   it->second->chunkPosZ+1)
+				// getChunk(it->second->chunkPosX-1, it->second->chunkPosZ),
+				// getChunk(it->second->chunkPosX+1, it->second->chunkPosZ),
+				// getChunk(it->second->chunkPosX,   it->second->chunkPosZ-1),
+				// getChunk(it->second->chunkPosX,   it->second->chunkPosZ+1)
+				getChunk({it->second->chunkPosX-1, 0, it->second->chunkPosZ}),
+				getChunk({it->second->chunkPosX+1, 0, it->second->chunkPosZ}),
+				getChunk({it->second->chunkPosX,   0, it->second->chunkPosZ-1}),
+				getChunk({it->second->chunkPosX,   0, it->second->chunkPosZ+1})
 		);
 	// for(int x = -renderDistance; x <= renderDistance; x++) {
 	// 	for(int z = -renderDistance; z <= renderDistance; z++) {

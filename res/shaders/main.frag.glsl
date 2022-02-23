@@ -9,10 +9,12 @@ in VS_OUT {
 
 // Material:
 struct Material {
-	sampler2D diffuseMap;
+	// sampler2D diffuseMap;
+	sampler2DArray diffuseMap;
 	vec3 diffuseColor;
 
-	sampler2D specularMap;
+	// sampler2D specularMap;
+	sampler2DArray specularMap;
     vec3 specularColor;
 
     float shininess;
@@ -48,7 +50,8 @@ uniform DirLight dirLight;
 
 
 uniform vec3 viewPos;
-uniform sampler2D normalMap;
+// uniform sampler2D normalMap;
+uniform sampler2DArray normalMap;
 
 // uniform sampler2D shadowMap;
 uniform sampler2DShadow shadowMap;
@@ -56,10 +59,14 @@ uniform sampler2DShadow shadowMap;
 out vec4 FragColor;
 
 
-vec3 choose(sampler2D tex, vec3 value) {
+// vec3 choose(sampler2D tex, vec3 value) {
+// 	if(textureSize(tex, 0).x != 1)
+// 		return texture(tex, fs_in.UVs).rgb;
+// 	return value;
+// }
+vec3 choose(sampler2DArray tex, vec3 value) {
 	if(textureSize(tex, 0).x != 1)
-	// if(textureQueryLevels(tex) != 0)
-		return texture(tex, fs_in.UVs).rgb;
+		return texture(tex, vec3(fs_in.UVs, 0)).rgb;
 	return value;
 }
 
@@ -128,7 +135,8 @@ void main() {
 	// mp.specular = material.specularColor;
 	mp.shininess = 32.;//material.shininess;
 
-	vec3 norm = texture(normalMap, fs_in.UVs).rgb * 2.0 - 1.0;
+	vec3 norm = choose(normalMap, vec3(.5, .5, 1.)) * 2.0 - 1.0;
+	// vec3 norm = texture(normalMap, fs_in.UVs).rgb * 2.0 - 1.0;
 	// vec3 norm = vec3(0., 0., 1.);
 	norm = normalize(fs_in.TBN * norm);
 

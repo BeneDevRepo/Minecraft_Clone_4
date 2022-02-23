@@ -9,10 +9,10 @@
 #include "World.h"
 
 
-Chunk::Chunk(const int32_t chunkPosX, const int32_t chunkPosZ):
+Chunk::Chunk(const int64_t chunkPosX, const int64_t chunkPosZ):
 		chunkPosX(chunkPosX), chunkPosZ(chunkPosZ),
 		mesh(),
-		blocks{}, dirty(false) {
+		blocks{}, dirty(true) {
 	// for(int x = 0; x < 16; x++) {
 	// 	for(int y = 0; y < 256; y++) {
 	// 		for(int z = 0; z < 16; z++) {
@@ -265,30 +265,30 @@ void Chunk::generateMesh(const Chunk *const xMinus, const Chunk *const xPlus, co
 	dirty = false;
 }
 
-Block Chunk::getBlock(const uint8_t x, const uint8_t y, const uint8_t z) const {
-	return blocks[x][y][z];
-}
-
 void Chunk::setBlock(World &world, const uint8_t x, const uint8_t y, const uint8_t z, const Block block) {
 	blocks[x][y][z] = block;
 	dirty = true;
 	if(x == 0) {
-		Chunk *c1 = world.getChunk(chunkPosX-1, chunkPosZ);
+		// Chunk *c1 = world.getChunk(chunkPosX-1, chunkPosZ);
+		Chunk *c1 = world.getChunk({chunkPosX-1, 0, chunkPosZ});
 		if(c1)
 			c1->dirty = true;
 	}
 	if(z == 0) {
-		Chunk *c3 = world.getChunk(chunkPosX,   chunkPosZ-1);
+		// Chunk *c3 = world.getChunk(chunkPosX,  chunkPosZ-1);
+		Chunk *c3 = world.getChunk({chunkPosX, 0,  chunkPosZ-1});
 		if(c3)
 			c3->dirty = true;
 	}
 	if(x == 15) {
-		Chunk *c2 = world.getChunk(chunkPosX+1, chunkPosZ);
+		// Chunk *c2 = world.getChunk(chunkPosX+1, chunkPosZ);
+		Chunk *c2 = world.getChunk({chunkPosX+1, 0, chunkPosZ});
 		if(c2)
 			c2->dirty = true;
 	}
 	if(z == 15) {
-		Chunk *c4 = world.getChunk(chunkPosX,   chunkPosZ+1);
+		// Chunk *c4 = world.getChunk(chunkPosX,  chunkPosZ+1);
+		Chunk *c4 = world.getChunk({chunkPosX, 0,  chunkPosZ+1});
 		if(c4)
 			c4->dirty = true;
 	}
