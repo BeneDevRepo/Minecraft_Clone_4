@@ -1,43 +1,25 @@
 #include "World.h"
 
-#include <iostream> // Debug
-
-#include <tuple>
-// #include <algorithm>
-
 #include "glm/ext/matrix_transform.hpp"
 
-constexpr int renderDistance = 16;
+#include <iostream> // Debug
+
+constexpr int renderDistance = 8;
 World::World():
 		chunks() {
 	for(int x = -renderDistance; x <= renderDistance; x++) {
-		for(int z = -renderDistance; z <= renderDistance; z++) {
-			chunks.insert({ChunkPos{x, 0, z}, new Chunk{ x, z } });
+		for(int y = -renderDistance; y <= renderDistance; y++) {
+			for(int z = -renderDistance; z <= renderDistance; z++) {
+				chunks.insert({ChunkPos{x, y, z}, new Chunk{{ x, y, z }} });
+			}
 		}
 	}
-
-	// for(auto it = chunks.begin(); it != chunks.end(); it++)
-	// 	it->second->generateMesh(
-	// 		getChunk({it->second->chunkPosX-1, 0, it->second->chunkPosZ}),
-	// 		getChunk({it->second->chunkPosX+1, 0, it->second->chunkPosZ}),
-	// 		getChunk({it->second->chunkPosX,   0, it->second->chunkPosZ-1}),
-	// 		getChunk({it->second->chunkPosX,   0, it->second->chunkPosZ+1})
-	// 	);
 }
 
 World::~World() {
 }
 
 
-// Chunk *World::getChunk(const int32_t chunkPosX, const int32_t chunkPosZ) {
-// 	std::unordered_map<int64_t, Chunk*>::iterator it = chunks.find(chunkPosToID(chunkPosX, chunkPosZ));
-// 	return (it == chunks.end()) ? nullptr : it->second;
-// }
-
-// const Chunk *World::getChunk(const int32_t chunkPosX, const int32_t chunkPosZ) const {
-// 	std::unordered_map<int64_t, Chunk*>::const_iterator it = chunks.find(chunkPosToID(chunkPosX, chunkPosZ));
-// 	return (it == chunks.end()) ? nullptr : it->second;
-// }
 Chunk *World::getChunk(const ChunkPos &chunkPos) {
 	std::unordered_map<ChunkPos, Chunk*>::iterator it = chunks.find(chunkPos);
 	return (it == chunks.end()) ? nullptr : it->second;
@@ -49,29 +31,30 @@ const Chunk *World::getChunk(const ChunkPos &chunkPos) const {
 }
 
 void World::loadChunksAround(const ChunkPos &center) {
+	if(!(GetAsyncKeyState('R') & 0x8000))
+		return;
 	for(int x = -renderDistance; x <= renderDistance; x++) {
-		for(int z = -renderDistance; z <= renderDistance; z++) {
-			ChunkPos current{ center.x + x, 0, center.z + z };
-			if(getChunk(current) == nullptr)
-				chunks.insert({current, new Chunk{ current.x, current.z } });
+		for(int y = -renderDistance; y <= renderDistance; y++) {
+			for(int z = -renderDistance; z <= renderDistance; z++) {
+				ChunkPos current{ center.x + x, center.y + y, center.z + z };
+				if(getChunk(current) == nullptr)
+					chunks.insert({current, new Chunk{{ current.x, current.y, current.z }} });
+			}
 		}
 	}
 	for (auto i = chunks.begin(), last = chunks.end(); i != last; ) {
-		if (i->second->chunkPosX < center.x - renderDistance
-			|| i->second->chunkPosX > center.x + renderDistance
-			|| i->second->chunkPosZ < center.z - renderDistance
-			|| i->second->chunkPosZ > center.z + renderDistance) {
+		if (i->second->chunkPos.x < center.x - renderDistance
+			|| i->second->chunkPos.x > center.x + renderDistance
+			|| i->second->chunkPos.y < center.y - renderDistance
+			|| i->second->chunkPos.y > center.y + renderDistance
+			|| i->second->chunkPos.z < center.z - renderDistance
+			|| i->second->chunkPos.z > center.z + renderDistance) {
 			delete i->second;
 			i = chunks.erase(i);
 		} else {
 			++i;
 		}
 	}
-	// std::erase_if(chunks, [](const auto& item)->bool {
-	// 			auto const& [key, value] = item;
-	// 			return value.x;
-	// 		}
-	// 	);
 }
 
 
@@ -81,17 +64,20 @@ std::vector<AABB> World::getPossibleCollisions(const AABB &bounds) const {
 		for(int x = std::floor(bounds.min.x); x <= std::floor(bounds.max.x); x++) {
 			for(int z = std::floor(bounds.min.z); z <= std::floor(bounds.max.z); z++) {
 				const int chunkX = std::floor(x / 16.f);
+				const int chunkY = std::floor(y / 16.f);
 				const int chunkZ = std::floor(z / 16.f);
-				// const Chunk *chunk = getChunk(chunkX, chunkZ);
-				const Chunk *chunk = getChunk({chunkX, 0, chunkZ});
+				// const Chunk *chunk = getChunk({chunkX, 0, chunkZ});
+				const Chunk *chunk = getChunk({chunkX, chunkY, chunkZ});
 
 				if(chunk == nullptr)
 					continue;
 
 				const int relBlockX = x - chunkX * 16;
+				const int relBlockY = y - chunkY * 16;
 				const int relBlockZ = z - chunkZ * 16;
 
-				if(chunk->getBlock(relBlockX, y, relBlockZ).type == BlockType::AIR)
+				// if(chunk->getBlock(relBlockX, y, relBlockZ).type == BlockType::AIR)
+				if(chunk->getBlock(relBlockX, relBlockY, relBlockZ).type == BlockType::AIR)
 					continue;
 
 				const glm::vec3 blockPos(x, y, z);
@@ -131,27 +117,30 @@ void World::draw(const ShaderProgram &shader) {
 	for(auto it = chunks.begin(); it != chunks.end(); it++)
 		if(it->second->isDirty())
 			it->second->generateMesh(
-				// getChunk(it->second->chunkPosX-1, it->second->chunkPosZ),
-				// getChunk(it->second->chunkPosX+1, it->second->chunkPosZ),
-				// getChunk(it->second->chunkPosX,   it->second->chunkPosZ-1),
-				// getChunk(it->second->chunkPosX,   it->second->chunkPosZ+1)
-				getChunk({it->second->chunkPosX-1, 0, it->second->chunkPosZ}),
-				getChunk({it->second->chunkPosX+1, 0, it->second->chunkPosZ}),
-				getChunk({it->second->chunkPosX,   0, it->second->chunkPosZ-1}),
-				getChunk({it->second->chunkPosX,   0, it->second->chunkPosZ+1})
+				// getChunk({it->second->chunkPos.x-1, 0, it->second->chunkPos.z}),
+				// getChunk({it->second->chunkPos.x+1, 0, it->second->chunkPos.z}),
+				// getChunk({it->second->chunkPos.x,   0, it->second->chunkPos.z-1}),
+				// getChunk({it->second->chunkPos.x,   0, it->second->chunkPos.z+1})
+				getChunk({it->second->chunkPos.x-1, it->second->chunkPos.y,   it->second->chunkPos.z  }),
+				getChunk({it->second->chunkPos.x+1, it->second->chunkPos.y,   it->second->chunkPos.z  }),
+				getChunk({it->second->chunkPos.x,   it->second->chunkPos.y-1, it->second->chunkPos.z  }),
+				getChunk({it->second->chunkPos.x,   it->second->chunkPos.y+1, it->second->chunkPos.z  }),
+				getChunk({it->second->chunkPos.x,   it->second->chunkPos.y,   it->second->chunkPos.z-1}),
+				getChunk({it->second->chunkPos.x,   it->second->chunkPos.y,   it->second->chunkPos.z+1})
 		);
-	// for(int x = -renderDistance; x <= renderDistance; x++) {
-	// 	for(int z = -renderDistance; z <= renderDistance; z++) {
-	// 		chunks.at(chunkPosToID(x, z))->mesh.bind();
-	// 		chunks.at(chunkPosToID(x, z))->mesh.draw();
-	// 	}
-	// }
+
 	for(auto it = chunks.begin(); it != chunks.end(); it++) {
 		const Chunk& chunk = *(it->second);
-		const glm::vec3 chunkOffset = glm::vec3(chunk.chunkPosX*16.f, 0.f, chunk.chunkPosZ*16.f);// * 1.02f;
+		const glm::vec3 chunkOffset = glm::vec3(
+				chunk.chunkPos.x * 16.f,
+				chunk.chunkPos.y * 16.f,
+				chunk.chunkPos.z * 16.f);
+		// const glm::vec3 chunkOffset = glm::vec3(chunk.chunkPos.x*16.f, 0.f, chunk.chunkPos.z*16.f);
 		const glm::mat4 model = glm::translate(glm::mat4(1.f), chunkOffset);
 		glProgramUniformMatrix4fv(shader, shader.getUniformLocation("model"), 1, GL_FALSE, &model[0][0]);
-		chunk.mesh.bind();
-		chunk.mesh.draw();
+		if(chunk.mesh.numIndices > 0) {
+			chunk.mesh.bind();
+			chunk.mesh.draw();
+		}
 	}
 }

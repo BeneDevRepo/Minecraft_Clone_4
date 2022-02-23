@@ -65,6 +65,19 @@ https://learnopengl.com/PBR/IBL/Specular-IBL
 quixels megascans (real scans)
 */
 
+/*
+ * ################   URGENT:
+ * - Implement floating Origin
+ * - recreate Meshes next to freshly created chunks
+ * - Implement greedy Meshing
+ * - Implement Block Types
+ * - Implement text rendering
+ * - Implement profiling
+ * - implement multithreaded / deferred chunk building
+ * 
+ * - Maybe try deferred rendering
+ */
+
 
 DebugRenderer *DEBUG_RENRERER;
 
@@ -103,13 +116,13 @@ int main() {
 
 	OpenGLWindow win(800, 800);
 	win.win.setCaptureMouse(true);
-	
+
 
 	World world; // Za Warudo!
 
 
-	// Player player(.5, 5.5, .5, 90.);
 	Player player(.5, 64., .5, 90.);
+	// Player player(1000*1000, 64., .5, 90.);
 
 
 	ShaderProgram shadowMapShaderProgram("../res/shaders/ShadowMap.vert.glsl", "../res/shaders/ShadowMap.frag.glsl");
@@ -149,8 +162,8 @@ int main() {
 	printf("max local work group invocations %i\n", work_grp_inv);
 
 
-	// Texture diffuse("../res/tex1.png");
 	// Texture diffuse("../res/dirt.jpg");
+	// Texture diffuse("../res/tex1.png");
 	// Texture diffuse("../res/box_diffuse.png");
 
 	// Texture normal("../res/brick_normal.png");
@@ -231,12 +244,12 @@ int main() {
 	// <Shadowmap Framebuffer>
 	// const unsigned int SHADOW_WIDTH = 4096, SHADOW_HEIGHT = 4096;
 	// const unsigned int SHADOW_WIDTH = 2048, SHADOW_HEIGHT = 2048;
-	const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+	// const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+	const unsigned int SHADOW_WIDTH = 512, SHADOW_HEIGHT = 512;
 	GLuint shadowFBO;
 	glCreateFramebuffers(1, &shadowFBO);
 
 	GLuint shadowTexture;
-	// createTexture(shadowTexture, SHADOW_WIDTH, SHADOW_HEIGHT, GL_DEPTH_COMPONENT24);
 	glCreateTextures(GL_TEXTURE_2D, 1, &shadowTexture);
 
 	glTextureParameteri(shadowTexture, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -331,7 +344,7 @@ int main() {
 
 		world.loadChunksAround({
 				(int64_t)std::floor(player.getFootPos().x / 16),
-				0,
+				(int64_t)std::floor(player.getFootPos().y / 16),
 				(int64_t)std::floor(player.getFootPos().z / 16),
 			});
 
@@ -397,9 +410,6 @@ int main() {
 		const glm::mat4 projection = glm::perspective(glm::radians(player.getFOV()), win.win.width * 1.f / win.win.height, 0.1f, 1000.f);
 		const glm::mat4 view = player.getViewMatrix();
 
-		// const glm::vec3 lightPos(1.3f, .4f, 1.5f);
-		const glm::vec3 lightPos(1.3f, 180.4f, 1.5f);
-
 
 		// Global Projection + View UBO:
 		glNamedBufferSubData(UBO, 0, (4 * 4) * sizeof(float), &projection[0][0]);
@@ -414,24 +424,13 @@ int main() {
 			glProgramUniformMatrix4fv(shaderProgram, shaderProgram.getUniformLocation("model"), 1, GL_FALSE, &bunny.model[0][0]);
 		}
 
-		//  Lighstource:
-		// {
-		// 	// lightsource.model = glm::scale(glm::translate(glm::mat4(1.f), glm::vec3(1.3f, .4f, 1.5f)), glm::vec3(.2f));
-		// 	lightsource.model = glm::scale(glm::translate(glm::mat4(1.f), lightPos), glm::vec3(.2f));
-		// 	glProgramUniformMatrix4fv(lightsourceShaderProgram, lightsourceShaderProgram.getUniformLocation("model"), 1, GL_FALSE, &lightsource.model[0][0]);
-		// }
-
-		// Skybox:
-		// {
-		// 	glProgramUniformMatrix4fv(skyboxShaderProgram, skyboxShaderProgram.getUniformLocation("projection"), 1, GL_FALSE, &projection[0][0]);
-
-		// 	const glm::mat4 skyView = glm::mat4(glm::mat3(view)); // remove translation from the view matrix
-		// 	glProgramUniformMatrix4fv(skyboxShaderProgram, skyboxShaderProgram.getUniformLocation("view"), 1, GL_FALSE, &skyView[0][0]);
-		// }
-
 		const glm::vec3 sunDir(.5f, -1.f, .2f);
 
 		{
+
+			// const glm::vec3 lightPos(1.3f, .4f, 1.5f);
+			// const glm::vec3 lightPos(1.3f, 180.4f, 1.5f);
+			const glm::vec3 lightPos = player.getRightHandPos();
 			// Pointlight:
 			// glm::vec3 lightPos = player.getRightHandPos();
 			glProgramUniform3fv(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].position"), 1, &lightPos[0]);
@@ -440,9 +439,13 @@ int main() {
 			glProgramUniform1f(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].linear"), .09f);
 			glProgramUniform1f(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].quadratic"), .032f);
 
-			glProgramUniform3f(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].ambient"), .2f, .2f, .2f);
-			glProgramUniform3f(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].diffuse"), .5f, .5f, .5f);
-			glProgramUniform3f(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].specular"), .3f, .2f, .1f);
+			// glProgramUniform3f(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].ambient"), .2f, .2f, .2f);
+			// glProgramUniform3f(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].diffuse"), .5f, .5f, .5f);
+			// glProgramUniform3f(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].specular"), .3f, .2f, .1f);
+			glm::vec3 pointCol = glm::vec3{ 0.98f, 0.65f, 0.03f } * .2f;
+			glProgramUniform3f(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].ambient"), .0f, .0f, .0f);
+			glProgramUniform3fv(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].diffuse"), 1, &pointCol[0]);
+			glProgramUniform3fv(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].specular"), 1, &pointCol[0]);
 			// glProgramUniform3f(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].diffuse"), 5.f, 5.f, 5.f); // extremely bright
 			// glProgramUniform3f(shaderProgram, shaderProgram.getUniformLocation("pointLights[0].specular"), 12.f, 15.f, 13.f); // extremely bright
 
@@ -466,6 +469,7 @@ int main() {
 
 		// --------------------------   Render Shadow map:
 		glm::mat4 lightSpaceMatrix;
+		if(false)
 		{
 			const float near_plane = 1.0f, far_plane = 100.5f;
 			glm::vec3 sunPos = player.getViewPos() - sunDir * 40.f;
