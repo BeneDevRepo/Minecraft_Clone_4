@@ -27,9 +27,9 @@ Chunk::Chunk(const ChunkPos &chunkPos):
 	static constexpr auto getHeight = [](const int blockX, const int blockZ)->uint8_t { return 8 + (int)(3*sin((blockX + blockZ * .5) * .05) + sin(blockX * .1)); };
 	for(int x = 0; x < 16; x++) {
 		for(int z = 0; z < 16; z++) {
-			const int absX = chunkPos.x * 16 + x;
-			const int absZ = chunkPos.z * 16 + z;
-			const int height = getHeight(absX, absZ) - chunkPos.y * 16;
+			const int absX = chunkPos.x() * 16 + x;
+			const int absZ = chunkPos.z() * 16 + z;
+			const int height = getHeight(absX, absZ) - chunkPos.y() * 16;
 			for(int y = 0; y < std::min(16, height); y++)
 				blocks[x][y][z] = { BlockType::GRASS };
 		}
@@ -77,24 +77,8 @@ Chunk::Chunk(const ChunkPos &chunkPos):
 Chunk::~Chunk() {
 }
 
-Chunk::Chunk(Chunk&& other):
-		chunkPos(other.chunkPos),
-		mesh(std::move(other.mesh)),
-		dirty(other.dirty) {
-	// memcpy(blocks, other.blocks, 16*256*16*sizeof(Block));
-	memcpy(blocks, other.blocks, 16*16*16*sizeof(Block));
-}
-
-Chunk &Chunk::operator=(Chunk&& other) {
-	if(this != &other) {
-		chunkPos = other.chunkPos;
-		mesh = std::move(other.mesh);
-		dirty = other.dirty;
-		// memcpy(blocks, other.blocks, 16*256*16*sizeof(Block));
-		memcpy(blocks, other.blocks, 16*16*16*sizeof(Block));
-	}
-	return *this;
-}
+// void Chunk::setVirtualOrigin(const ChunkPos &virtualOrigin) {
+// }
 
 void Chunk::generateMesh(
 		const Chunk *const xMinus, const Chunk *const xPlus,
@@ -278,33 +262,33 @@ void Chunk::setBlock(World &world, const uint8_t x, const uint8_t y, const uint8
 	blocks[x][y][z] = block;
 	dirty = true;
 	if(x == 0) {
-		Chunk *chunk = world.getChunk({chunkPos.x-1, chunkPos.y, chunkPos.z});
+		Chunk *chunk = world.getChunk({chunkPos.x()-1, chunkPos.y(), chunkPos.z()});
 		if(chunk != nullptr)
 			chunk->dirty = true;
 	}
 	if(y == 0) {
-		Chunk *chunk = world.getChunk({chunkPos.x, chunkPos.y-1, chunkPos.z});
+		Chunk *chunk = world.getChunk({chunkPos.x(), chunkPos.y()-1, chunkPos.z()});
 		if(chunk)
 			chunk->dirty = true;
 	}
 	if(z == 0) {
-		Chunk *chunk = world.getChunk({chunkPos.x, chunkPos.y,  chunkPos.z-1});
+		Chunk *chunk = world.getChunk({chunkPos.x(), chunkPos.y(),  chunkPos.z()-1});
 		if(chunk)
 			chunk->dirty = true;
 	}
 
 	if(x == 15) {
-		Chunk *chunk = world.getChunk({chunkPos.x+1, chunkPos.y, chunkPos.z});
+		Chunk *chunk = world.getChunk({chunkPos.x()+1, chunkPos.y(), chunkPos.z()});
 		if(chunk)
 			chunk->dirty = true;
 	}
 	if(y == 15) {
-		Chunk *chunk = world.getChunk({chunkPos.x, chunkPos.y+1, chunkPos.z});
+		Chunk *chunk = world.getChunk({chunkPos.x(), chunkPos.y()+1, chunkPos.z()});
 		if(chunk)
 			chunk->dirty = true;
 	}
 	if(z == 15) {
-		Chunk *chunk = world.getChunk({chunkPos.x, chunkPos.y,  chunkPos.z+1});
+		Chunk *chunk = world.getChunk({chunkPos.x(), chunkPos.y(),  chunkPos.z()+1});
 		if(chunk)
 			chunk->dirty = true;
 	}

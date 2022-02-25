@@ -10,6 +10,7 @@
 #include "OpenGL/StaticMesh.h"
 #include "OpenGL/Texture.h"
 #include "OpenGL/Cubemap.h"
+
 #include "OpenGL/DebugRenderer.h"
 
 // #include "Threading/mingw.thread.h"
@@ -24,6 +25,8 @@
 
 #include "World.h"
 #include "Player.h"
+
+#include "Profiling/Profiler.h"
 
 
 
@@ -79,6 +82,8 @@ quixels megascans (real scans)
  */
 
 
+
+
 DebugRenderer *DEBUG_RENRERER;
 
 #include "Audio/AudioOutput.h"
@@ -118,11 +123,11 @@ int main() {
 	win.win.setCaptureMouse(true);
 
 
+	// Player player({.5, 64., .5}, 90.);
+	// Player player({1000*1000, 64., .5}, 90.);
+	Player player({1000*1000*1000*1000, 64., .5}, 90.);
+
 	World world; // Za Warudo!
-
-
-	Player player(.5, 64., .5, 90.);
-	// Player player(1000*1000, 64., .5, 90.);
 
 
 	ShaderProgram shadowMapShaderProgram("../res/shaders/ShadowMap.vert.glsl", "../res/shaders/ShadowMap.frag.glsl");
@@ -316,6 +321,8 @@ int main() {
 
 	LARGE_INTEGER lastTime;
 	for(;;) {
+		Profiler::get().startFrame();
+
 		win.pollMsg();
 		if(win.shouldClose())
 			break;
@@ -339,14 +346,14 @@ int main() {
 
 
 		player.handleMouseInput(dt, win.win.mouseX, win.win.mouseY);
-
 		player.update(dt, world);
 
-		world.loadChunksAround({
-				(int64_t)std::floor(player.getFootPos().x / 16),
-				(int64_t)std::floor(player.getFootPos().y / 16),
-				(int64_t)std::floor(player.getFootPos().z / 16),
-			});
+		world.loadChunksAround(player.getVirtualOrigin());
+
+
+
+
+
 
 		bool sizeChanged = fbWidth != win.win.width || fbHeight != win.win.height;
 		if(sizeChanged) {
@@ -466,10 +473,11 @@ int main() {
 			glProgramUniform3f(shaderProgram, shaderProgram.getUniformLocation("material.specularColor"), 1.f, 1.f, 1.f);
 		}
 
+		Profiler::get().startSegment("Shadow Map");
 
 		// --------------------------   Render Shadow map:
 		glm::mat4 lightSpaceMatrix;
-		if(false)
+		// if(false)
 		{
 			const float near_plane = 1.0f, far_plane = 100.5f;
 			glm::vec3 sunPos = player.getViewPos() - sunDir * 40.f;
@@ -494,7 +502,7 @@ int main() {
 				// glCullFace(GL_FRONT);
 				glProgramUniformMatrix4fv(shadowMapShaderProgram, glGetUniformLocation(shadowMapShaderProgram, "lightSpaceMatrix"), 1, GL_FALSE, &lightSpaceMatrix[0][0]);
 				shadowMapShaderProgram.bind();
-					world.draw(shadowMapShaderProgram);
+					world.draw(player.getVirtualOrigin(), shadowMapShaderProgram);
 
 					glm::mat4 playerModel(1.f);
 					playerModel = glm::translate(playerModel, player.getFootPos() + glm::vec3(0.f, 1.65f / 2 + 0.01f, 0.f));
@@ -517,6 +525,8 @@ int main() {
 		glProgramUniform1i(shaderProgram, glGetUniformLocation(shaderProgram, "shadowMap"), 5);
 
 
+
+		Profiler::get().startSegment("Main Render");
 
 
 		// Render Scene:
@@ -542,7 +552,7 @@ int main() {
 				// bunny.draw();
 				// glm::mat4 worldModel(1.f);
 				// glProgramUniformMatrix4fv(shaderProgram, shaderProgram.getUniformLocation("model"), 1, GL_FALSE, &worldModel[0][0]);
-				world.draw(shaderProgram);
+				world.draw(player.getVirtualOrigin(), shaderProgram);
 
 				if(player.bodyVisible()) {
 					glm::mat4 playerModel(1.f);
@@ -629,8 +639,8 @@ int main() {
 
 		LARGE_INTEGER afterBloom;
 		QueryPerformanceCounter(&afterBloom);
-		if(frame % 2000 == 0)
-			printf("Bloom time: %.4f ms\n", (afterBloom.QuadPart - beforeBloom.QuadPart) * 1. / (frequency.QuadPart / 1000));
+		// if(frame % 240 == 0)
+		// 	printf("Bloom time: %.4f ms\n", (afterBloom.QuadPart - beforeBloom.QuadPart) * 1. / (frequency.QuadPart / 1000));
 		// }
 
 

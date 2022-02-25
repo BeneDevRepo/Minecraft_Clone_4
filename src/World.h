@@ -9,13 +9,15 @@
 
 #include "OpenGL/ShaderProgram.h"
 
-#include "ChunkPos.h"
+#include "Coordinates.h"
 
 class World {
 	std::unordered_map<ChunkPos, Chunk*> chunks;
+	// ChunkPos virtualOrigin;
 
 public:
 	World();
+	// World(ChunkPos virtualOrigin);
 	~World();
 
 	World(const World&) = delete;
@@ -26,8 +28,8 @@ public:
 
 	void loadChunksAround(const ChunkPos &center);
 
-	std::vector<AABB> getPossibleCollisions(const AABB &bounds) const;
-	bool collidesWith(const AABB &entity, const glm::vec3& displacement, glm::ivec3 &contact_normal, float &contact_time) const;
+	std::vector<AABB> getPossibleCollisions(const ChunkPos &virtualOrigin, const AABB &bounds) const;
+	bool collidesWith(const ChunkPos &virtualOrigin, const AABB &entity, const glm::vec3& displacement, glm::ivec3 &contact_normal, float &contact_time) const;
 
-	void draw(const ShaderProgram &shader);
+	void draw(const ChunkPos &virtualOrigin, const ShaderProgram &shader);
 };

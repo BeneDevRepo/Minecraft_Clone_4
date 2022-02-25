@@ -2,7 +2,7 @@
 
 #include "OpenGL/StaticMesh.h"
 
-#include "ChunkPos.h"
+#include "Coordinates.h"
 
 #include <cstdint>
 
@@ -20,7 +20,7 @@ private:
 	bool dirty;
 
 public:
-	ChunkPos chunkPos;
+	const ChunkPos chunkPos;
 
 public:
 	StaticMesh mesh;
@@ -32,15 +32,18 @@ public:
 	Chunk(const Chunk&) = delete;
 	Chunk &operator=(const Chunk&) = delete;
 
-	Chunk(Chunk&& other);
-	Chunk &operator=(Chunk&& other);
+	Chunk(Chunk&&) = delete;
+	Chunk &operator=(Chunk&&) = delete;
 
-	// void generateMesh(const Chunk *const xMinus, const Chunk *const xPlus, const Chunk *const zMinus, const Chunk *const zPlus);
+	// void setVirtualOrigin(const ChunkPos &virtualOrigin);
 	void generateMesh(
 		const Chunk *const xMinus, const Chunk *const xPlus,
 		const Chunk *const yMinus, const Chunk *const yPlus,
 		const Chunk *const zMinus, const Chunk *const zPlus);
 
+	inline Block getBlock(const glm::ivec3 pos) const {
+		return blocks[pos.x][pos.y][pos.z];
+	}
 	inline Block getBlock(const uint8_t x, const uint8_t y, const uint8_t z) const {
 		return blocks[x][y][z];
 	}

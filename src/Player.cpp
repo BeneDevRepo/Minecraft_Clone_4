@@ -9,8 +9,26 @@
 
 
 
-Player::Player(const float x, const float y, const float z, const float FOV):
-		pos(x, y, z), zoom(FOV),
+// Player::Player(const float x, const float y, const float z, const float FOV):
+// 		pos(x, y, z), zoom(FOV),
+// 		vel(0.f), inputDir(0.f),
+// 		perspective(Perspective::FIRST_PERSON), flying(true),
+// 		Yaw(0), Pitch(0),
+// 		bodyMesh(StaticMesh::cube(glm::vec3(4.f / 16.f, 1.65f, 8.f / 16.f))) {
+// }
+
+Player::Player(const glm::vec3 &absPos, const float FOV):
+		// chunkPos{
+		// 		(int64_t)std::floor(absPos.x / 16.f),
+		// 		(int64_t)std::floor(absPos.y / 16.f),
+		// 		(int64_t)std::floor(absPos.z / 16.f)
+		// 	},
+		// pos(absPos - glm::vec3(chunkPos.x() * 16.f, chunkPos.y() * 16.f, chunkPos.z() * 16.f)),
+
+		pos(absPos),
+		// virtualOrigin(0, 0, 0),
+
+		zoom(FOV),
 		vel(0.f), inputDir(0.f),
 		perspective(Perspective::FIRST_PERSON), flying(true),
 		Yaw(0), Pitch(0),
@@ -116,6 +134,11 @@ void Player::update(const float dt, World& world) {
 		vel += glm::vec3(0.f, -20.f + .01f, 0.f) * dt;
 
 
+	// #####################################################################    DEBUGGING   <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+	// static int fr = 0; fr++;
+	// if(fr % 120 == 0)
+	// 	pos.printDebug();
+
 
 	// <collision resolution>
 	onGround = false;
@@ -124,14 +147,17 @@ void Player::update(const float dt, World& world) {
 		float contact_time;
 		glm::ivec3 contact_normal;
 
-		if(!world.collidesWith(getAABB(), vel * dt, contact_normal, contact_time))
+		if(!world.collidesWith(getVirtualOrigin(), getAABB(), vel * dt, contact_normal, contact_time))
 			break;
 
 		contact_time = std::max(contact_time-.02f, 0.f);
 
 		for(int j = 0; j < 3; j++) {
 			if(contact_normal[j]) {
-				pos[j] += vel[j] * dt * contact_time;
+				// pos[j] += vel[j] * dt * contact_time;
+				glm::vec3 offset(0.f); offset[j] = vel[j] * dt * contact_time;
+				pos += offset;
+
 				vel[j] = 0;
 			}
 		}
@@ -151,9 +177,17 @@ void Player::update(const float dt, World& world) {
 
 	// <Test Bullets>
 	struct Bullet {
-		glm::vec3 pos, vel;
-		int lifetime = 240 * 10;
-		inline AABB getAABB() const { return AABB::fromCenter(pos, glm::vec3(.5f)); }
+		EntityPos pos;
+		// glm::vec3 pos;
+		glm::vec3 vel;
+		int lifetime;
+		inline Bullet(const EntityPos &pos, const glm::vec3 &vel):
+			pos(pos), vel(vel), lifetime(240 * 10) {
+		}
+		inline AABB getAABB(const ChunkPos &virtualOrigin) const {
+			// return AABB::fromCenter(pos, glm::vec3(.5f));
+			return AABB::fromCenter((pos-virtualOrigin).computeAbsolute(), glm::vec3(.5f));
+		}
 	};
 	static std::vector<Bullet> bullets;
 
@@ -161,7 +195,7 @@ void Player::update(const float dt, World& world) {
 	static int lastShot = 0; lastShot--;
 	if(GetAsyncKeyState(VK_MBUTTON) & 0x8000) {
 		if(lastShot <= 0) {
-			bullets.push_back({getViewPos(), getViewDir() * 50.f});
+			bullets.push_back({EntityPos::compute(getVirtualOrigin(), getViewPos()), getViewDir() * 50.f});
 			lastShot = 240 / 10; // 10 Shots Per Second
 		}
 	} else
@@ -181,33 +215,26 @@ void Player::update(const float dt, World& world) {
 		float contact_time;
 		glm::ivec3 contact_normal;
 
-		if(world.collidesWith(bullet.getAABB(), bullet.vel * dt, contact_normal, contact_time)) {
+		if(world.collidesWith(getVirtualOrigin(), bullet.getAABB(getVirtualOrigin()), bullet.vel * dt, contact_normal, contact_time)) {
 
-			const AABB expAABB = AABB::fromCenter(bullet.pos, glm::vec3(EXPLOSION_RADIUS * 2));
-			const std::vector<AABB> blocks = world.getPossibleCollisions(expAABB);
+			const AABB expAABB = AABB::fromCenter((bullet.pos - getVirtualOrigin()).computeAbsolute(), glm::vec3(EXPLOSION_RADIUS * 2));
+
+			const std::vector<AABB> blocks = world.getPossibleCollisions(getVirtualOrigin(), expAABB);
 			for(const AABB &col : blocks) {
 				const glm::vec3 blockPos = col.min;
-				const int32_t x = std::floor(blockPos.x);
-				const int32_t y = std::floor(blockPos.y);
-				const int32_t z = std::floor(blockPos.z);
+				const BlockPos blockPosAbs = BlockPos::compute(getVirtualOrigin(), glm::floor(col.min));
 
-				const float blockDist = glm::length(blockPos - bullet.pos);
+				// const float blockDist = glm::length(blockPos - (bullet.pos - getVirtualOrigin()).computeAbsolute());
+				const float blockDist = glm::length(blockPos - (bullet.pos - getVirtualOrigin()).computeAbsolute());
 				if(blockDist > EXPLOSION_RADIUS) continue;
 				if(blockDist > EXPLOSION_RADIUS-2 && (rand() % 5 == 0)) continue;
 
-				const int chunkX = std::floor(x / 16.f);
-				const int chunkY = std::floor(y / 16.f);
-				const int chunkZ = std::floor(z / 16.f);
-				// Chunk *const chunk = world.getChunk(chunkX, chunkZ);
-				Chunk *const chunk = world.getChunk({chunkX, chunkY, chunkZ});
 
+
+				Chunk *const chunk = world.getChunk(blockPosAbs.chunkPos());
 				if(chunk == nullptr) continue;
 
-				const int relBlockX = x - chunkX * 16;
-				const int relBlockY = y - chunkY * 16;
-				const int relBlockZ = z - chunkZ * 16;
-
-				chunk->setBlock(world, relBlockX, relBlockY, relBlockZ, { BlockType::AIR });
+				chunk->setBlock(world, blockPosAbs.blockPos().x, blockPosAbs.blockPos().y, blockPosAbs.blockPos().z, { BlockType::AIR });
 			}
 
 			bullets.erase(it);
@@ -216,7 +243,7 @@ void Player::update(const float dt, World& world) {
 
 		bullet.pos += bullet.vel * dt; // Update bullet position
 
-		DEBUG_RENRERER->box(bullet.getAABB().min, bullet.getAABB().max); // ####################   DEBUG   #####################
+		DEBUG_RENRERER->box(bullet.getAABB(getVirtualOrigin()).min, bullet.getAABB(getVirtualOrigin()).max); // ####################   DEBUG   #####################
 		++it;
 	}
 	// </Test Bullets>
@@ -234,7 +261,6 @@ void Player::update(const float dt, World& world) {
 		const glm::vec3 viewPos = getViewPos();
 		const glm::vec3 viewDir = getViewDir();
 
-		// glm::ivec3 currentBlock = glm::trunc(viewPos);
 		glm::ivec3 currentBlock = glm::floor(viewPos);
 		const glm::vec3 deltaT = glm::abs(1.f / viewDir);
 		bool hit = false;
@@ -287,22 +313,31 @@ void Player::update(const float dt, World& world) {
 			}
 
 			//Check if ray has hit a wall
-			const ChunkPos chunkPos{
-				(int64_t)std::floor(currentBlock.x / 16.f),
-				(int64_t)std::floor(currentBlock.y / 16.f),
-				(int64_t)std::floor(currentBlock.z / 16.f)};
+			const BlockPos blockPosAbsolute = BlockPos::compute(getVirtualOrigin(), currentBlock);
+			// const ChunkPos chunkPosRel = ChunkPos{
+			// 	(int64_t)std::floor(currentBlock.x / 16.f),
+			// 	(int64_t)std::floor(currentBlock.y / 16.f),
+			// 	(int64_t)std::floor(currentBlock.z / 16.f)};
 
-			Chunk *const chunk = world.getChunk(chunkPos);
+			// const ChunkPos chunkPos = ChunkPos{
+			// 	(int64_t)std::floor(currentBlock.x / 16.f),
+			// 	(int64_t)std::floor(currentBlock.y / 16.f),
+			// 	(int64_t)std::floor(currentBlock.z / 16.f)}
+			// 	+ getVirtualOrigin();
+			// const ChunkPos chunkPos = chunkPosRel + getVirtualOrigin();
+
+			// Chunk *const chunk = world.getChunk(chunkPos);
+			Chunk *const chunk = world.getChunk(blockPosAbsolute.chunkPos());
 			if(chunk == nullptr)
 				continue;
 
-			const glm::ivec3 blockPosRel(
-				currentBlock.x - chunkPos.x * 16,
-				// currentBlock.y,
-				currentBlock.y - chunkPos.y * 16,
-				currentBlock.z - chunkPos.z * 16);
+			// const glm::ivec3 blockPosRel(
+			// 	currentBlock.x - chunkPosRel.x() * 16,
+			// 	currentBlock.y - chunkPosRel.y() * 16,
+			// 	currentBlock.z - chunkPosRel.z() * 16);
 
-			if(chunk->getBlock(blockPosRel.x, blockPosRel.y, blockPosRel.z).type != BlockType::AIR) {
+			// if(chunk->getBlock(blockPosRel.x, blockPosRel.y, blockPosRel.z).type != BlockType::AIR) {
+			if(chunk->getBlock(blockPosAbsolute.blockPos()).type != BlockType::AIR) {
 				hit = true;
 			}
 		}
@@ -313,19 +348,20 @@ void Player::update(const float dt, World& world) {
 				);
 
 			if(GetAsyncKeyState(VK_LBUTTON) & 0x8000) {
-				const ChunkPos chunkPos{
-					(int64_t)std::floor(currentBlock.x / 16.f),
-					// 0,
-					(int64_t)std::floor(currentBlock.y / 16.f),
-					(int64_t)std::floor(currentBlock.z / 16.f) };
-				Chunk *const chunk = world.getChunk(chunkPos);
+				const BlockPos blockPosAbsolute = BlockPos::compute(getVirtualOrigin(), currentBlock);
+				// const ChunkPos chunkPos{
+				// 	(int64_t)std::floor(currentBlock.x / 16.f),
+				// 	(int64_t)std::floor(currentBlock.y / 16.f),
+				// 	(int64_t)std::floor(currentBlock.z / 16.f) };
+				// Chunk *const chunk = world.getChunk(chunkPos);
+				Chunk *const chunk = world.getChunk(blockPosAbsolute.chunkPos());
 
 				if(chunk != nullptr) {
-					const glm::ivec3 blockPosRel(
-						currentBlock.x - chunkPos.x * 16,
-						// currentBlock.y,
-						currentBlock.y - chunkPos.y * 16,
-						currentBlock.z - chunkPos.z * 16);
+					// const glm::ivec3 blockPosRel(
+					// 	currentBlock.x - chunkPos.x() * 16,
+					// 	currentBlock.y - chunkPos.y() * 16,
+					// 	currentBlock.z - chunkPos.z() * 16);
+					const glm::ivec3 blockPosRel = blockPosAbsolute.blockPos();
 
 					chunk->setBlock(world, blockPosRel.x, blockPosRel.y, blockPosRel.z, {BlockType::AIR});
 				}
@@ -341,23 +377,26 @@ void Player::update(const float dt, World& world) {
 			// 	);
 
 			if(GetAsyncKeyState(VK_RBUTTON) & 0x8000) {
+				const BlockPos blockPosAbsolute = BlockPos::compute(getVirtualOrigin(), targetBlock);
+
 				AABB blockAABB{targetBlock,
 						{targetBlock.x+1, targetBlock.y+1, targetBlock.z+1}};
 
 				if(!blockAABB.collidesWith(getAABB())) {
-					const ChunkPos chunkPos{
-						(int64_t)std::floor(targetBlock.x / 16.f),
-						(int64_t)std::floor(targetBlock.y / 16.f),
-						(int64_t)std::floor(targetBlock.z / 16.f) };
+					// const ChunkPos chunkPos{
+					// 	(int64_t)std::floor(targetBlock.x / 16.f),
+					// 	(int64_t)std::floor(targetBlock.y / 16.f),
+					// 	(int64_t)std::floor(targetBlock.z / 16.f) };
 
-					Chunk *const chunk = world.getChunk(chunkPos);
+					// Chunk *const chunk = world.getChunk(chunkPos);
+					Chunk *const chunk = world.getChunk(blockPosAbsolute.chunkPos());
 
 					if(chunk != nullptr) {
-						const glm::ivec3 blockPosRel(
-							targetBlock.x - chunkPos.x * 16,
-							// targetBlock.y,
-							targetBlock.y - chunkPos.y * 16,
-							targetBlock.z - chunkPos.z * 16);
+						// const glm::ivec3 blockPosRel(
+						// 	targetBlock.x - chunkPos.x() * 16,
+						// 	targetBlock.y - chunkPos.y() * 16,
+						// 	targetBlock.z - chunkPos.z() * 16);
+						const glm::ivec3 blockPosRel = blockPosAbsolute.blockPos();
 
 						chunk->setBlock(world, blockPosRel.x, blockPosRel.y, blockPosRel.z, {BlockType::GRASS});
 					}

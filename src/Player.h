@@ -7,12 +7,18 @@
 
 #include "World.h"
 #include "AABB.h"
+#include "Coordinates.h"
 
 #include <cstdint>
 
+
 class Player {
 private:
-	glm::vec3 pos, vel;
+	// ChunkPos chunkPos; // Coordinates of Chunk the Player is currently in
+	// glm::vec3 pos; // Position of player relative to chunk
+	EntityPos pos; // Position of player relative to chunk
+	// ChunkPos virtualOrigin;
+	glm::vec3 vel;
 	glm::vec2 inputDir;
 
 	// euler Angles
@@ -26,7 +32,9 @@ private:
 	StaticMesh bodyMesh;
 
 public:
-	Player(const float x, const float y, const float z, const float FOV = 45.);
+	// Player(const float x, const float y, const float z, const float FOV = 45.);
+	Player(const ChunkPos &chunkPos, const glm::vec3 &relativePos, const float FOV = 45.);
+	Player(const glm::vec3 &absPos, const float FOV = 45.);
 	~Player();
 
 	Player(const Player&) = delete;
@@ -41,17 +49,29 @@ public:
 	inline float getFOV() const {
 		return zoom;
 	}
-	inline glm::vec3 getFootPos() const {
-		return this->pos;
-	}
-	inline glm::vec3 getViewPos() const {
-		return this->pos + glm::vec3(0.f, 1.62f, 0.f);
+	inline float getYaw() const { // rotation around y
+		return Yaw;
 	}
 	static constexpr glm::vec3 getDimensions() {
 		return glm::vec3(.6f, 1.8f, .6f);
 	}
+
+	inline glm::vec3 getFootPos() const {
+		// return this->pos;
+		// return this->pos.computeAbsolute();
+		return pos.relativePos();
+	}
+	inline ChunkPos getVirtualOrigin() const {
+		// return {0, 0, 0};
+		return pos.chunkPos();
+	}
+
+
+	inline glm::vec3 getViewPos() const {
+		return getFootPos() + glm::vec3(0.f, 1.62f, 0.f);
+	}
 	inline glm::vec3 getCenter() const {
-		return this->pos + glm::vec3(0.f, getDimensions().y / 2.f, 0.f);
+		return getFootPos() + glm::vec3(0.f, getDimensions().y / 2.f, 0.f);
 	}
 
 	inline Ray getViewRay() const {
@@ -69,9 +89,6 @@ public:
 			sin(handAngle));
 		return getCenter() + handDir * .5f;
 	}
-	inline float getYaw() const {
-		return Yaw;
-	}
 
 	inline glm::vec3 getViewDir() const {
 		glm::vec3 front;
@@ -86,6 +103,7 @@ public:
 			case Perspective::FIRST_PERSON: return glm::lookAt(getViewPos(), getViewPos() + getViewDir(), UP);
 			case Perspective::THIRD_PERSON: return glm::lookAt(getViewPos() - getViewDir() * 3.f, getViewPos(), UP);
 		}
+		printf("Catastrophic Failiure in Player::getViewMatrix()\n");
 		return *(glm::mat4*)nullptr; // XD
     }
 	inline bool bodyVisible() const {
