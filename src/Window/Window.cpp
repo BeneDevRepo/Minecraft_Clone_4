@@ -62,7 +62,7 @@ Window::Window(const int width, const int height, const WindowStyle windowStyle)
 		win_class.lpszClassName, // lpClassName
 		L"Title", // lpWindowName
 		windowStyle.baseStyle,
-		100, // x
+		800, // x
 		100, // y
 		width, // width
 		height, // height

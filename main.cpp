@@ -81,6 +81,14 @@ quixels megascans (real scans)
  * - Maybe try deferred rendering
  */
 
+// https://lehrerweb.at/typo3conf/materials.php?show=sek/inf/iktfit/tabelle/zahlen.htm
+
+//    Durchmesser Sonnensystem: 9.09 milliarde km = 9.090.000.000 km
+// =           9.090.000.000.000 m // ~ 9 billionen Meter
+//    1 Lichtjahr: ~ 9.46 Billion km = 9.460.730.472.580 km
+// =       9.460.730.472.580.000 m // ~ 9.4 billiarden Meter
+//      int64_max: 9.223.372.036.854.775.807 -> int64_max * 16m ~ 147.568.372.036.854.775.807 m
+// = 147.568.372.036.854.775.807 m // ~ 147 Trillionen Meter (oder 16396 Lichtjahre bzw. 16396000 Sonnensystem-Durchmesser) (vom Ursprung in jede Richtung)
 
 
 
@@ -123,11 +131,15 @@ int main() {
 	win.win.setCaptureMouse(true);
 
 
-	// Player player({.5, 64., .5}, 90.);
+	Player player({.5, 12., .5}, 90.);
 	// Player player({1000*1000, 64., .5}, 90.);
-	Player player({1000*1000*1000*1000, 64., .5}, 90.);
+	// Player player({1000*1000*1000*1000., 64., .5}, 90.);
+	// Player player({INT64_MAX - 12, 4, 5}, {.5f, .5f, 5.5f}, 90.);
+	// printf("%lld\n", player.getVirtualOrigin().x());
 
 	World world; // Za Warudo!
+
+	// world.loadChunksAround(player.getVirtualOrigin()); // DEBUG
 
 
 	ShaderProgram shadowMapShaderProgram("../res/shaders/ShadowMap.vert.glsl", "../res/shaders/ShadowMap.frag.glsl");
@@ -190,7 +202,6 @@ int main() {
 
 	// StaticMesh bunny = StaticMesh::loadSTL("../res/Bunny.stl");
 	StaticMesh bunny = StaticMesh::cube();
-	// StaticMesh lightsource = StaticMesh::cube();
 	StaticMesh viewportRect = StaticMesh::viewportRect();
 	StaticMesh skyBox = StaticMesh::cube(glm::vec3(2.f));
 
@@ -320,8 +331,8 @@ int main() {
 	QueryPerformanceFrequency(&frequency);
 
 	LARGE_INTEGER lastTime;
-	for(;;) {
-		Profiler::get().startFrame();
+	for(uint64_t frame = 0;; frame++) {
+		Profiler::get().startFrame(frame);
 
 		win.pollMsg();
 		if(win.shouldClose())
@@ -334,7 +345,6 @@ int main() {
 		uint64_t timeSinceLastFrame = currentTime.QuadPart - lastTime.QuadPart;
 		lastTime = currentTime;
 
-		static int frame = 0; frame++;
 		if(frame%60 == 0) {
 			const int FPS = frequency.QuadPart / timeSinceLastFrame;
 			const float frameTime = timeSinceLastFrame / (frequency.QuadPart / 1000 / 100) / 100.f; // first calculate 1/10th millisecond steps as integer, then shift comma left by one
@@ -348,11 +358,18 @@ int main() {
 		player.handleMouseInput(dt, win.win.mouseX, win.win.mouseY);
 		player.update(dt, world);
 
-		world.loadChunksAround(player.getVirtualOrigin());
+
+
+		Profiler::get().startSegment("Loading Chunks");
+
+		world.loadChunksAround(player.getVirtualOrigin()); // -------------------------------------------
 
 
 
 
+
+
+		Profiler::get().startSegment("Resizing stuff");
 
 
 		bool sizeChanged = fbWidth != win.win.width || fbHeight != win.win.height;
@@ -413,6 +430,9 @@ int main() {
 			glTextureStorage2D(bloomTex2, 1, GL_R11F_G11F_B10F, win.win.width, win.win.height);
 		}
 
+
+
+		Profiler::get().startSegment("Setting parameters");
 
 		const glm::mat4 projection = glm::perspective(glm::radians(player.getFOV()), win.win.width * 1.f / win.win.height, 0.1f, 1000.f);
 		const glm::mat4 view = player.getViewMatrix();
@@ -477,6 +497,7 @@ int main() {
 
 		// --------------------------   Render Shadow map:
 		glm::mat4 lightSpaceMatrix;
+		// /*
 		// if(false)
 		{
 			const float near_plane = 1.0f, far_plane = 100.5f;
@@ -502,7 +523,7 @@ int main() {
 				// glCullFace(GL_FRONT);
 				glProgramUniformMatrix4fv(shadowMapShaderProgram, glGetUniformLocation(shadowMapShaderProgram, "lightSpaceMatrix"), 1, GL_FALSE, &lightSpaceMatrix[0][0]);
 				shadowMapShaderProgram.bind();
-					world.draw(player.getVirtualOrigin(), shadowMapShaderProgram);
+					world.draw(player.getVirtualOrigin(), lightSpaceMatrix, shadowMapShaderProgram);
 
 					glm::mat4 playerModel(1.f);
 					playerModel = glm::translate(playerModel, player.getFootPos() + glm::vec3(0.f, 1.65f / 2 + 0.01f, 0.f));
@@ -514,6 +535,7 @@ int main() {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glViewport(0, 0, win.win.width, win.win.height);
 		}
+		// */
 
 
 		// set lightSpaceMatrix of main shader Program for reverse transformation
@@ -552,7 +574,7 @@ int main() {
 				// bunny.draw();
 				// glm::mat4 worldModel(1.f);
 				// glProgramUniformMatrix4fv(shaderProgram, shaderProgram.getUniformLocation("model"), 1, GL_FALSE, &worldModel[0][0]);
-				world.draw(player.getVirtualOrigin(), shaderProgram);
+				world.draw(player.getVirtualOrigin(), projection * player.getViewMatrix(), shaderProgram);
 
 				if(player.bodyVisible()) {
 					glm::mat4 playerModel(1.f);
@@ -596,6 +618,7 @@ int main() {
 		glDisable(GL_DEPTH_TEST); // Don't depth test after main render
 
 
+		Profiler::get().startSegment("Post Processing");
 
 		// Bloom:
 		// if(GetAsyncKeyState('B') & 0x8000) {
@@ -653,6 +676,8 @@ int main() {
 			framebufferShaderProgram.bind();
 				viewportRect.bind();
 				viewportRect.draw();
+
+		Profiler::get().startSegment("After Frame");
 
 		win.swapBuffers();
 	}

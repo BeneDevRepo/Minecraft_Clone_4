@@ -2,88 +2,86 @@
 
 #include "glm/ext/matrix_transform.hpp"
 
-#include <iostream> // Debug
+// #include "FrustumCull.h"
 
-constexpr int renderDistance = 8;
+#include <algorithm>
+
+#include <iostream> // Debug
+#include "Profiling/Profiler.h"
+
+
 World::World():
-		chunks() {
-	// for(int x = -renderDistance; x <= renderDistance; x++) {
-	// 	for(int y = -renderDistance; y <= renderDistance; y++) {
-	// 		for(int z = -renderDistance; z <= renderDistance; z++) {
-	// 			chunks.insert({ChunkPos{x, y, z}, new Chunk{{ x, y, z }} });
-	// 		}
-	// 	}
-	// }
+		// renderDistance(10),
+		renderDistance(5),
+		chunks{},
+		renderer{} {
 }
 
 World::~World() {
 }
 
-
-Chunk *World::getChunk(const ChunkPos &chunkPos) {
-	std::unordered_map<ChunkPos, Chunk*>::iterator it = chunks.find(chunkPos);
-	return (it == chunks.end()) ? nullptr : it->second;
-}
-
-const Chunk *World::getChunk(const ChunkPos &chunkPos) const {
-	std::unordered_map<ChunkPos, Chunk*>::const_iterator it = chunks.find(chunkPos);
-	return (it == chunks.end()) ? nullptr : it->second;
-}
-
 void World::loadChunksAround(const ChunkPos &center) {
+	{
+		static ChunkPos lastCenter;
+		static bool chunksLoaded;
+		if(chunksLoaded && center == lastCenter) return;
+		lastCenter = center;
+		chunksLoaded = true;
+	}
+
 	// if(!(GetAsyncKeyState('R') & 0x8000))
 	// 	return;
+
+	// // Load new Chunks:
 	for(int x = -renderDistance; x <= renderDistance; x++) {
 		for(int y = -renderDistance; y <= renderDistance; y++) {
 			for(int z = -renderDistance; z <= renderDistance; z++) {
-				ChunkPos current{ center.x() + x, center.y() + y, center.z() + z };
-				if(getChunk(current) == nullptr)
-					chunks.insert({current, new Chunk{{ current.x(), current.y(), current.z() }} });
+				const ChunkPos current{ center.x() + x, center.y() + y, center.z() + z };
+
+				if(getChunk(current) == nullptr) {
+					chunks.insert({current, new Chunk(current)});
+					renderer.addChunk(*this, current);
+				}
 			}
 		}
 	}
+
+	// Unload distant chunks:
 	for (auto i = chunks.begin(), last = chunks.end(); i != last; ) {
-		if (   i->second->chunkPos.x() < center.x() - renderDistance
-			|| i->second->chunkPos.x() > center.x() + renderDistance
-			|| i->second->chunkPos.y() < center.y() - renderDistance
-			|| i->second->chunkPos.y() > center.y() + renderDistance
-			|| i->second->chunkPos.z() < center.z() - renderDistance
-			|| i->second->chunkPos.z() > center.z() + renderDistance) {
-			delete i->second;
+		const ChunkPos &chunkPos = i->second->chunkPos;
+		if (	   chunkPos.x() < center.x() - renderDistance
+				|| chunkPos.y() < center.y() - renderDistance
+				|| chunkPos.z() < center.z() - renderDistance
+				|| chunkPos.x() > center.x() + renderDistance
+				|| chunkPos.y() > center.y() + renderDistance
+				|| chunkPos.z() > center.z() + renderDistance) {
+			Chunk *const chunk = i->second;
 			i = chunks.erase(i);
+
+			renderer.removeChunk(chunk->chunkPos);
+			delete chunk;
 		} else {
 			++i;
 		}
 	}
 }
 
-
+// bounds + returned AABBS are relative to virtualOrigin
 std::vector<AABB> World::getPossibleCollisions(const ChunkPos &virtualOrigin, const AABB &bounds) const {
 	std::vector<AABB> out;
-	for(int y = std::floor(bounds.min.y); y <= std::floor(bounds.max.y); y++) {
-		for(int x = std::floor(bounds.min.x); x <= std::floor(bounds.max.x); x++) {
-			for(int z = std::floor(bounds.min.z); z <= std::floor(bounds.max.z); z++) {
-				// const int64_t chunkX = std::floor(x / 16.f);
-				// const int64_t chunkY = std::floor(y / 16.f);
-				// const int64_t chunkZ = std::floor(z / 16.f);
-				// const Chunk *chunk = getChunk({chunkX, chunkY, chunkZ});
+	for(int y = std::floor(bounds.min.y); y < std::ceil(bounds.max.y); y++) {
+		for(int x = std::floor(bounds.min.x); x < std::ceil(bounds.max.x); x++) {
+			for(int z = std::floor(bounds.min.z); z < std::ceil(bounds.max.z); z++) {
+				const glm::ivec3 blockPosRel(x, y, z);
+				const BlockPos blockPosAbs = BlockPos::compute(virtualOrigin, blockPosRel);
 
-				const BlockPos blockPosAbs = BlockPos::compute(virtualOrigin, glm::ivec3(x, y, z));
 				const Chunk *chunk = getChunk(blockPosAbs.chunkPos());
 
-				if(chunk == nullptr)
-					continue;
+				if(chunk == nullptr) continue; // can't collide if not in chunk
 
-				// const int relBlockX = x - chunkX * 16;
-				// const int relBlockY = y - chunkY * 16;
-				// const int relBlockZ = z - chunkZ * 16;
+				if(chunk->getBlock(blockPosAbs.blockPos()).type == BlockType::AIR) continue; // can't collide with air
 
-				// if(chunk->getBlock(relBlockX, relBlockY, relBlockZ).type == BlockType::AIR)
-				if(chunk->getBlock(blockPosAbs.blockPos()).type == BlockType::AIR)
-					continue;
-
-				const glm::vec3 blockPos(x, y, z);
-				const AABB blockAABB = {blockPos, blockPos + glm::vec3(1.f, 1.f, 1.f)};
+				const AABB blockAABB = {blockPosRel, blockPosRel + glm::ivec3(1, 1, 1)};
 
 				if(bounds.collidesWith(blockAABB))
 					out.push_back(blockAABB);
@@ -93,6 +91,7 @@ std::vector<AABB> World::getPossibleCollisions(const ChunkPos &virtualOrigin, co
 	return out;
 }
 
+// Entity AABB is relative to virtualOrigin
 bool World::collidesWith(const ChunkPos &virtualOrigin, const AABB &entity, const glm::vec3& displacement, glm::ivec3 &contact_normal, float &contact_time) const {
 	const AABB movementBounds = AABB::fromCenter(entity.center() + displacement / 2.f, entity.dimensions() + glm::abs(displacement));
 	const std::vector<AABB> initialColliders = getPossibleCollisions(virtualOrigin, movementBounds);
@@ -102,6 +101,7 @@ bool World::collidesWith(const ChunkPos &virtualOrigin, const AABB &entity, cons
 	for(const AABB &collider_cur : initialColliders) {
 		float t_cur;
 		glm::ivec3 contact_normal_cur;
+
 		if(DynamicRectVsRect(displacement, entity, collider_cur, contact_normal_cur, t_cur)) {
 			if(t_cur >= 0.f && t_cur < contact_time) {
 				contact_time = t_cur;
@@ -114,33 +114,10 @@ bool World::collidesWith(const ChunkPos &virtualOrigin, const AABB &entity, cons
 }
 
 
-void World::draw(const ChunkPos &virtualOrigin, const ShaderProgram &shader) {
-	for(auto it = chunks.begin(); it != chunks.end(); it++)
-		if(it->second->isDirty())
-			it->second->generateMesh(
-				// getChunk({it->second->chunkPos.x-1, 0, it->second->chunkPos.z}),
-				// getChunk({it->second->chunkPos.x+1, 0, it->second->chunkPos.z}),
-				// getChunk({it->second->chunkPos.x,   0, it->second->chunkPos.z-1}),
-				// getChunk({it->second->chunkPos.x,   0, it->second->chunkPos.z+1})
-				getChunk({it->second->chunkPos.x()-1, it->second->chunkPos.y(),   it->second->chunkPos.z()  }),
-				getChunk({it->second->chunkPos.x()+1, it->second->chunkPos.y(),   it->second->chunkPos.z()  }),
-				getChunk({it->second->chunkPos.x(),   it->second->chunkPos.y()-1, it->second->chunkPos.z()  }),
-				getChunk({it->second->chunkPos.x(),   it->second->chunkPos.y()+1, it->second->chunkPos.z()  }),
-				getChunk({it->second->chunkPos.x(),   it->second->chunkPos.y(),   it->second->chunkPos.z()-1}),
-				getChunk({it->second->chunkPos.x(),   it->second->chunkPos.y(),   it->second->chunkPos.z()+1})
-		);
+void World::draw(const ChunkPos &virtualOrigin, const glm::mat4 &pv, const ShaderProgram &shader) {
+	Profiler::get().startSegment("Regenerate Meshes");
+	renderer.regenerateChunks(*this);
 
-	for(auto it = chunks.begin(); it != chunks.end(); it++) {
-		const Chunk& chunk = *(it->second);
-
-		const glm::vec3 chunkOffset = (chunk.chunkPos - virtualOrigin).toVec3() * 16.f;
-		// const glm::vec3 chunkOffset = (chunk.chunkPos).toVec3() * 16.f;
-
-		const glm::mat4 model = glm::translate(glm::mat4(1.f), chunkOffset);
-		glProgramUniformMatrix4fv(shader, shader.getUniformLocation("model"), 1, GL_FALSE, &model[0][0]);
-		if(chunk.mesh.numIndices > 0) {
-			chunk.mesh.bind();
-			chunk.mesh.draw();
-		}
-	}
+	Profiler::get().startSegment("Render Meshes");
+	renderer.draw(virtualOrigin, shader);
 }

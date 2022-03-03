@@ -1,29 +1,34 @@
 #pragma once
 
-#include "OpenGL/StaticMesh.h"
-
 #include "Coordinates.h"
 
+#include "OpenGL/opengl_include.h"
+
 #include <cstdint>
+#include <vector>
+
+#include "ChunkRenderer.h"
 
 class World;
 
 enum class BlockType : uint8_t { AIR = 0, GRASS };
 
-struct Block {
-	BlockType type;
-};
+struct Block { BlockType type; };
 
 class Chunk {
+	friend class World; // world can access chunk
+	friend class ChunkMesh; // ChunkMesh can access chunk
+
+public:
+	using BlockArray = Block[16][16][16];
+
 private:
-	Block blocks[16][16][16]; // x, y, z
-	bool dirty;
+	// Block blocks[16][16][16]; // x, y, z
+	BlockArray blocks; // x, y, z
 
 public:
 	const ChunkPos chunkPos;
 
-public:
-	StaticMesh mesh;
 
 public:
 	Chunk(const ChunkPos &chunkPos);
@@ -35,22 +40,13 @@ public:
 	Chunk(Chunk&&) = delete;
 	Chunk &operator=(Chunk&&) = delete;
 
-	// void setVirtualOrigin(const ChunkPos &virtualOrigin);
-	void generateMesh(
-		const Chunk *const xMinus, const Chunk *const xPlus,
-		const Chunk *const yMinus, const Chunk *const yPlus,
-		const Chunk *const zMinus, const Chunk *const zPlus);
-
-	inline Block getBlock(const glm::ivec3 pos) const {
+	inline Block getBlock(const glm::ivec3 &pos) const {
 		return blocks[pos.x][pos.y][pos.z];
 	}
-	inline Block getBlock(const uint8_t x, const uint8_t y, const uint8_t z) const {
-		return blocks[x][y][z];
+
+	inline const BlockArray &getBlocks() const {
+		return blocks;
 	}
 
-	void setBlock(World &world, const uint8_t x, const uint8_t y, const uint8_t z, const Block block);
-
-	inline bool isDirty() const {
-		return dirty;
-	}
+	void setBlock(World &world, const glm::ivec3 &blockPos, const Block block);
 };

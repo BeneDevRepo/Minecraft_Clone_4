@@ -1,6 +1,7 @@
 #include "Player.h"
 
 #include <vector>
+#include <algorithm>
 
 #include "AABB.h"
 
@@ -8,25 +9,17 @@
 #include <iostream>
 
 
-
-// Player::Player(const float x, const float y, const float z, const float FOV):
-// 		pos(x, y, z), zoom(FOV),
-// 		vel(0.f), inputDir(0.f),
-// 		perspective(Perspective::FIRST_PERSON), flying(true),
-// 		Yaw(0), Pitch(0),
-// 		bodyMesh(StaticMesh::cube(glm::vec3(4.f / 16.f, 1.65f, 8.f / 16.f))) {
-// }
-
 Player::Player(const glm::vec3 &absPos, const float FOV):
-		// chunkPos{
-		// 		(int64_t)std::floor(absPos.x / 16.f),
-		// 		(int64_t)std::floor(absPos.y / 16.f),
-		// 		(int64_t)std::floor(absPos.z / 16.f)
-		// 	},
-		// pos(absPos - glm::vec3(chunkPos.x() * 16.f, chunkPos.y() * 16.f, chunkPos.z() * 16.f)),
-
 		pos(absPos),
-		// virtualOrigin(0, 0, 0),
+
+		zoom(FOV),
+		vel(0.f), inputDir(0.f),
+		perspective(Perspective::FIRST_PERSON), flying(true),
+		Yaw(0), Pitch(0),
+		bodyMesh(StaticMesh::cube(glm::vec3(4.f / 16.f, 1.65f, 8.f / 16.f))) {
+}
+Player::Player(const ChunkPos &chunkPos, const glm::vec3 &relativePos, const float FOV):
+		pos(chunkPos, relativePos),
 
 		zoom(FOV),
 		vel(0.f), inputDir(0.f),
@@ -234,7 +227,7 @@ void Player::update(const float dt, World& world) {
 				Chunk *const chunk = world.getChunk(blockPosAbs.chunkPos());
 				if(chunk == nullptr) continue;
 
-				chunk->setBlock(world, blockPosAbs.blockPos().x, blockPosAbs.blockPos().y, blockPosAbs.blockPos().z, { BlockType::AIR });
+				chunk->setBlock(world, blockPosAbs.blockPos(), { BlockType::AIR });
 			}
 
 			bullets.erase(it);
@@ -363,7 +356,7 @@ void Player::update(const float dt, World& world) {
 					// 	currentBlock.z - chunkPos.z() * 16);
 					const glm::ivec3 blockPosRel = blockPosAbsolute.blockPos();
 
-					chunk->setBlock(world, blockPosRel.x, blockPosRel.y, blockPosRel.z, {BlockType::AIR});
+					chunk->setBlock(world, blockPosRel, {BlockType::AIR});
 				}
 			}
 
@@ -398,7 +391,7 @@ void Player::update(const float dt, World& world) {
 						// 	targetBlock.z - chunkPos.z() * 16);
 						const glm::ivec3 blockPosRel = blockPosAbsolute.blockPos();
 
-						chunk->setBlock(world, blockPosRel.x, blockPosRel.y, blockPosRel.z, {BlockType::GRASS});
+						chunk->setBlock(world, blockPosRel, {BlockType::GRASS});
 					}
 				}
 			}

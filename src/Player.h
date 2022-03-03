@@ -32,9 +32,8 @@ private:
 	StaticMesh bodyMesh;
 
 public:
-	// Player(const float x, const float y, const float z, const float FOV = 45.);
-	Player(const ChunkPos &chunkPos, const glm::vec3 &relativePos, const float FOV = 45.);
 	Player(const glm::vec3 &absPos, const float FOV = 45.);
+	Player(const ChunkPos &chunkPos, const glm::vec3 &relativePos, const float FOV = 45.);
 	~Player();
 
 	Player(const Player&) = delete;
