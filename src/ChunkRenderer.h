@@ -8,84 +8,67 @@
 
 #include <unordered_map>
 #include <unordered_set>
-// #include <vector>
 
 #include "Coordinates.h"
 
-#include "Mesh.h"
-#include "GPUMesh.h"
+// #include "Mesh.h"
+// #include "GPUMesh.h"
 
-#include "ChunkMeshGenerator.h"
-
+// #include "ChunkMesh.h"
+#include "ChunkBatch.h"
 
 
 class World;
 
-class ChunkMesh {
-public:
-	ChunkPos sourceChunk;
-	Mesh mesh;
-	GPUMesh gpuMesh;
-
-public:
-	inline ChunkMesh(const ChunkPos &sourceChunk):
-		sourceChunk(sourceChunk),
-		mesh{},
-		gpuMesh{} { }
-
-	ChunkMesh(const ChunkMesh&) = delete;
-	ChunkMesh &operator=(const ChunkMesh&) = delete;
-
-	ChunkMesh(ChunkMesh&& source):
-			sourceChunk(source.sourceChunk) {
-		mesh = std::move(source.mesh);
-		gpuMesh = std::move(source.gpuMesh);
-	}
-	ChunkMesh &operator=(ChunkMesh&& source) {
-		if (this != &source) {
-			sourceChunk = source.sourceChunk;
-			mesh = std::move(source.mesh);
-			gpuMesh = std::move(source.gpuMesh);
-        }
-        return *this;
-	}
-
-public:
-	inline void generate(const World &world) {
-		generateChunkMesh(world, sourceChunk, mesh);
-		gpuMesh.upload(mesh);
-	}
-};
-
-class ChunkBatch {
-	enum class CONTAINER_TYPE { MESHES, BATCHES } contains;
-	union {
-		ChunkMesh *meshes[8];
-		ChunkBatch *subBatches[8];
-	};
-	GPUMesh mesh;
-
-public:
-	ChunkBatch();
-};
-
 class ChunkRenderer {
 	GLuint VAO;
-	std::unordered_map<ChunkPos, ChunkMesh*> chunks;
+
+private:
+	const uint32_t numLevels; // 1 means storing individual chunks in the top level ChunkBatches
+
+	std::unordered_map<ChunkPos, ChunkBatch*> chunks; // chunkPos is position of Batch (depends on numLevels, if numLevels==1, pos is identical to actual chunkPos)
+	// std::unordered_map<ChunkPos, ChunkMesh*> chunks;
+
 	std::unordered_set<ChunkPos> dirtyChunks; // may contain coordinates of non-existing chunks
 
 public:
-	ChunkRenderer();
+	ChunkRenderer(const uint32_t numLevels);
 	~ChunkRenderer();
 
-	inline void addChunk(const World &world, const ChunkPos &chunkPos) {
-		chunks.insert({chunkPos, new ChunkMesh(chunkPos)});
+	inline ChunkPos topLevelBatchPos(const ChunkPos &chunkPos) {
+		return ChunkBatch::toBatchPos(chunkPos, numLevels-1);
+	}
+
+	inline ChunkBatch *getBatch(const ChunkPos &batchPos) {
+		std::unordered_map<ChunkPos, ChunkBatch*>::iterator it = chunks.find(batchPos);
+		return (it == chunks.end()) ? nullptr : it->second;
+	}
+	inline const ChunkBatch *getBatch(const ChunkPos &batchPos) const {
+		std::unordered_map<ChunkPos, ChunkBatch*>::const_iterator it = chunks.find(batchPos);
+		return (it == chunks.end()) ? nullptr : it->second;
+	}
+
+	inline void addChunk(const ChunkPos &chunkPos) {
+		ChunkPos containingPatchPos = topLevelBatchPos(chunkPos);
+		ChunkBatch *containingBatch = getBatch(containingPatchPos);
+		if(containingBatch == nullptr) {
+			containingBatch = new ChunkBatch(chunkPos, numLevels);
+			chunks.insert({containingPatchPos, containingBatch});
+		}
+		containingBatch->addChunk(chunkPos);
+
 		markChunkDirty(chunkPos);
 		markNeighborsDirty(chunkPos);
 	}
 
 	inline void removeChunk(const ChunkPos &chunkPos) {
-		chunks.erase(chunkPos);
+		ChunkPos containingBatchPos = topLevelBatchPos(chunkPos);
+		ChunkBatch *containingBatch = getBatch(containingBatchPos);
+		containingBatch->removeChunk(chunkPos);
+		if(containingBatch->numSubMeshes() == 0) {
+			chunks.erase(containingBatchPos);
+			delete containingBatch;
+		}
 	}
 
 	inline void markChunkDirty(const ChunkPos &chunkPos) {
@@ -102,27 +85,41 @@ public:
 
 	inline void regenerateChunks(const World &world) {
 		for(const ChunkPos &chunkPos : dirtyChunks) {
-			std::unordered_map<ChunkPos, ChunkMesh*>::iterator it = chunks.find(chunkPos);
-			ChunkMesh *chunk = (it == chunks.end()) ? nullptr : it->second;
-			if(chunk == nullptr) continue;
-			chunk->generate(world);
+			const ChunkPos batchPos = topLevelBatchPos(chunkPos);
+			std::unordered_map<ChunkPos, ChunkBatch*>::iterator it = chunks.find(batchPos);
+			ChunkBatch *batch = (it == chunks.end()) ? nullptr : it->second;
+			if(batch == nullptr) continue;
+			batch->generate(world, chunkPos);
+
+			// std::unordered_map<ChunkPos, ChunkMesh*>::iterator it = chunks.find(chunkPos);
+			// ChunkMesh *chunk = (it == chunks.end()) ? nullptr : it->second;
+			// if(chunk == nullptr) continue;
+			// chunk->generate(world);
 		}
 		dirtyChunks.clear();
+
+		for(const auto &[batchPos, chunkBatch] : chunks)
+			if(chunkBatch->dirty)
+				chunkBatch->regenerateCombinedMeshes();
 	}
 
 	inline void draw(const ChunkPos &virtualOrigin, const ShaderProgram &shader) {
-		constexpr GLsizei FLOATS_PER_VERTEX = 11;
 		glBindVertexArray(VAO);
 
-		for(const auto [chunkPos, chunk] : chunks) {
-			const glm::mat4 model = glm::translate(glm::mat4(1.f), (chunkPos - virtualOrigin).toVec3() * 16.f);
-			glProgramUniformMatrix4fv(shader, shader.getUniformLocation("model"), 1, GL_FALSE, &model[0][0]);
+		for(const auto &[batchPos, chunkBatch] : chunks)
+			chunkBatch->draw(virtualOrigin, shader, VAO);
 
-			glVertexArrayVertexBuffer(VAO, 0, chunk->gpuMesh.VBO, 0, FLOATS_PER_VERTEX * sizeof(GLfloat));
-			glVertexArrayElementBuffer(VAO, chunk->gpuMesh.EBO);
+		// constexpr GLsizei FLOATS_PER_VERTEX = 11;
+		// for(const auto [chunkPos, chunk] : chunks) {
+		// 	const glm::mat4 model = glm::translate(glm::mat4(1.f), (chunkPos - virtualOrigin).toVec3() * 16.f);
+		// 	glProgramUniformMatrix4fv(shader, shader.getUniformLocation("model"), 1, GL_FALSE, &model[0][0]);
 
-			glDrawElements(GL_TRIANGLES, chunk->gpuMesh.numIndices, GL_UNSIGNED_INT, 0);
-		}
+		// 	glVertexArrayVertexBuffer(VAO, 0, chunk->gpuMesh.VBO, 0, FLOATS_PER_VERTEX * sizeof(GLfloat));
+		// 	glVertexArrayElementBuffer(VAO, chunk->gpuMesh.EBO);
+
+		// 	glDrawElements(GL_TRIANGLES, chunk->gpuMesh.numIndices, GL_UNSIGNED_INT, 0);
+		// }
+
 		glBindVertexArray(0);
 	}
 };

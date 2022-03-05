@@ -41,6 +41,7 @@ public:
 public:
 	inline ChunkPos operator+(const ChunkPos &other) const { return ChunkPos{ x()+other.x(), y()+other.y(), z()+other.z() }; }
 	inline ChunkPos operator-(const ChunkPos &other) const { return ChunkPos{ x()-other.x(), y()-other.y(), z()-other.z() }; }
+	inline ChunkPos operator*(const int64_t fac) const { return ChunkPos{ x() * fac, y() * fac, z() * fac }; }
 	inline ChunkPos &operator+=(const ChunkPos &other) {
 		for(int dim = 0; dim < 3; dim++) data[dim] += other.data[dim];
 		return *this;

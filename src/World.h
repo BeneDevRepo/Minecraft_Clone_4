@@ -12,6 +12,8 @@
 
 #include "ChunkRenderer.h"
 
+// class Chunk;
+
 class World {
 private:
 	int renderDistance;

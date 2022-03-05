@@ -9,6 +9,8 @@
 
 #include "ChunkRenderer.h"
 
+// #include "World.h"
+
 class World;
 
 enum class BlockType : uint8_t { AIR = 0, GRASS };

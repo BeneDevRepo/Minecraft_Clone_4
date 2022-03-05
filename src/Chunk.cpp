@@ -8,8 +8,6 @@
 #include <iostream> // Debugging
 
 
-
-
 Chunk::Chunk(const ChunkPos &chunkPos):
 		chunkPos(chunkPos),
 		blocks{} {
@@ -18,13 +16,9 @@ Chunk::Chunk(const ChunkPos &chunkPos):
 
 	for(int x = 0; x < 16; x++) {
 		for(int z = 0; z < 16; z++) {
-			const int64_t absX = chunkPos.x() * 16 + x;
-			const int64_t absZ = chunkPos.z() * 16 + z;
 			for(int y = 0; y < 16; y++) {
-				// blocks[x][y][z] = { (y + chunkPos.y() * 16 < 5) ? BlockType::GRASS : BlockType::AIR };
-				// if(chunkPos.y() == 0 && y==5)
-				// 	if((x % 8 < 4) == (z % 8 < 4))
-				// 		blocks[x][y][z] = { BlockType::GRASS };
+				const int64_t absX = chunkPos.x() * 16 + x;
+				const int64_t absZ = chunkPos.z() * 16 + z;
 				blocks[x][y][z] = { (y + chunkPos.y() * 16 < getHeight(absX, absZ)) ? BlockType::GRASS : BlockType::AIR };
 			}
 		}

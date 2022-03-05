@@ -9,12 +9,15 @@
 #include <iostream> // Debug
 #include "Profiling/Profiler.h"
 
+// #include "Chunk.h"
+
 
 World::World():
-		// renderDistance(10),
-		renderDistance(5),
+		// renderDistance(20),
+		renderDistance(16),
+		// renderDistance(5),
 		chunks{},
-		renderer{} {
+		renderer(4) {
 }
 
 World::~World() {
@@ -23,7 +26,7 @@ World::~World() {
 void World::loadChunksAround(const ChunkPos &center) {
 	{
 		static ChunkPos lastCenter;
-		static bool chunksLoaded;
+		static bool chunksLoaded = false;
 		if(chunksLoaded && center == lastCenter) return;
 		lastCenter = center;
 		chunksLoaded = true;
@@ -40,7 +43,7 @@ void World::loadChunksAround(const ChunkPos &center) {
 
 				if(getChunk(current) == nullptr) {
 					chunks.insert({current, new Chunk(current)});
-					renderer.addChunk(*this, current);
+					renderer.addChunk(current);
 				}
 			}
 		}

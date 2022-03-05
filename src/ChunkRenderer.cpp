@@ -3,7 +3,8 @@
 // #include "World.h"
 
 
-ChunkRenderer::ChunkRenderer() {
+ChunkRenderer::ChunkRenderer(const uint32_t numLevels):
+		numLevels(numLevels) {
 	glCreateVertexArrays(1, &VAO);
 
 	int FLOATS_PER_VERTEX = 0;

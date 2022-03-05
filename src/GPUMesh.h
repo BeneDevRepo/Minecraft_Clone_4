@@ -53,4 +53,13 @@ public:
 
 		numIndices = mesh.numIndices;
 	}
+
+	inline void draw(const GLuint VAO) {
+		constexpr GLsizei FLOATS_PER_VERTEX = 11;
+
+		glVertexArrayVertexBuffer(VAO, 0, this->VBO, 0, FLOATS_PER_VERTEX * sizeof(GLfloat));
+		glVertexArrayElementBuffer(VAO, this->EBO);
+
+		glDrawElements(GL_TRIANGLES, this->numIndices, GL_UNSIGNED_INT, 0);
+	}
 };
