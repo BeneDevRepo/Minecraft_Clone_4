@@ -1,7 +1,7 @@
 #pragma once
 
-#include <vector>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "Chunk.h"
 #include "Coordinates.h"
@@ -12,13 +12,18 @@
 
 #include "ChunkRenderer.h"
 
-// class Chunk;
+#include <atomic>
 
 class World {
 private:
 	int renderDistance;
 	std::unordered_map<ChunkPos, Chunk*> chunks;
+
 	ChunkRenderer renderer;
+	std::unordered_set<ChunkPos> dirtyChunks;
+	std::unordered_set<ChunkPos> newChunks;
+	std::unordered_set<ChunkPos> deletedChunks;
+	std::atomic_uint32_t numUploadFailures; // How many frames in a row the render thread was unable to communicate to the Mesh Generator thread
 
 public:
 	World();
@@ -47,10 +52,16 @@ public:
 
 public:
 	inline void markChunkDirty(const ChunkPos &chunkPos) {
-		renderer.markChunkDirty(chunkPos);
+		dirtyChunks.insert(chunkPos);
+		// renderer.markChunkDirty(chunkPos);
 	}
 	inline void markNeighborsDirty(const ChunkPos &chunkPos) {
-		renderer.markNeighborsDirty(chunkPos);
+		for(int dimension = 0; dimension < 3; dimension++) {
+			ChunkPos dir(0, 0, 0); dir[dimension] = 1;
+			dirtyChunks.insert(chunkPos - dir);
+			dirtyChunks.insert(chunkPos + dir);
+		}
+		// renderer.markNeighborsDirty(chunkPos);
 	}
 	void draw(const ChunkPos &virtualOrigin, const glm::mat4 &pv, const ShaderProgram &shader);
 };

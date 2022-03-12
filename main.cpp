@@ -29,7 +29,7 @@
 #include "Profiling/Profiler.h"
 
 
-
+#include "Json/Json.h"
 
 
 // - Monitor Physik Engine
@@ -96,8 +96,56 @@ DebugRenderer *DEBUG_RENRERER;
 
 #include "Audio/AudioOutput.h"
 
+#include <functional> // useless
+
 
 int main() {
+	const auto json = Json::fromFile("../res/fonts/Arial_32/font.json");
+
+	std::function<void(const Json::Value&)> printJson;
+	printJson = [&printJson](const Json::Value& val)->void {
+		switch(val.getType()) {
+			case Json::Value::Type::Object:
+				printf("{");
+				// printf("\n"); // --
+				for(const auto &[key, value] : val.getObject().getDict()) {
+					printf("\"%s\": ", key.c_str());
+					printJson(value);
+					printf(", ");
+					// printf("\n"); // --
+				}
+				printf("}");
+				break;
+
+			case Json::Value::Type::Array:
+				break; // TODO: HANDLE
+
+			case Json::Value::Type::Bool:
+				printf("\"%s\"", val.getBool() ? "true" : "false");
+				break;
+
+			case Json::Value::Type::Int:
+				printf("%d", val.getInt());
+				break;
+
+			case Json::Value::Type::String:
+				printf("\"%s\"", val.getString().c_str());
+				break;
+
+			case Json::Value::Type::Null:
+				printf("<null>");
+				break;
+		}
+	};
+
+	// printJson(json);
+	Json::Value &characters = json.getObject()["characters"];
+	for(const auto &[key, value] : characters.getObject().getDict()) {
+		printf("%s: ", key.c_str());
+		printJson(value);
+		printf("\n");
+	}
+
 	// {
 	// 	AudioOutput audioOutput;
 

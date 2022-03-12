@@ -52,7 +52,7 @@ private:
 
 public:
 	static inline Profiler &get() {
-		static Profiler instance;
+		thread_local static Profiler instance;
 		return instance;
 	}
 	inline void startFrame(const uint64_t frame) {

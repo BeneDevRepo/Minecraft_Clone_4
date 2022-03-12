@@ -6,33 +6,28 @@
 #include "OpenGL/opengl_include.h"
 #include "OpenGL/ShaderProgram.h"
 
-#include "Mesh.h"
-#include "GPUMesh.h"
-
-#include "ChunkMesh.h"
-
-#include "Coordinates.h"
-
 #include <cstdint>
 
-// #include "ChunkMeshGenerator.h"
+#include "Mesh.h"
+#include "GPUMesh.h"
+#include "Coordinates.h"
+#include "ChunkMeshGenerator.h"
 
 class ChunkBatch {
-	const ChunkPos batchPos;
-	// const uint32_t level; // single chunks are stored in level 0 Batches
-	const uint32_t level; // level 0 Batches represent single Chunks
+	friend class ChunkRenderer;
 
-	union {
-		ChunkBatch *subBatches[8];
-		ChunkMesh *chunks[8];
-		// ChunkMesh *chunk;
-	};
+private:
+	const uint32_t level; // level 0 Batches represent single Chunks
+	const ChunkPos batchPos;
+
+	ChunkBatch *subBatches[8]; // [level > 0] Batches have up to 8 sub-Batches, otherwise unused
 
 	Mesh mesh;
-	GPUMesh gpuMesh;
+	bool dirty; // true if mesh not up-to-date
 
-public:
-	bool dirty; // dirty if mesh / gpuMesh not up-to-date
+	GPUMesh gpuMesh;
+	bool gpuDirty; // true if GPU Buffers not up-to-date
+
 
 public:
 	static inline ChunkPos toBatchPos(const ChunkPos &chunkPos, const int32_t level) {
@@ -42,7 +37,8 @@ public:
 				return a / b - (remainder && resultNegative);
 			};
 
-			const int32_t divisor = 1 << (level + 1); // 2 ^ (level+1)
+			const int64_t divisor = 1 << level; // 2 ^ level
+
 			return {
 				floorDiv(chunkPos.x(), divisor),
 				floorDiv(chunkPos.y(), divisor),
@@ -50,21 +46,21 @@ public:
 			};
 	}
 	static inline ChunkPos toChunkPos(const ChunkPos &batchPos, const uint32_t level) {
-			return batchPos * (1 << (level + 1));
+			return batchPos * (1 << level);
 		}
+
+	inline ChunkPos toRelativeSubBatchPos(const ChunkPos &chunkPos) const {
+		return toBatchPos(chunkPos - toChunkPos(batchPos, level), level-1);
+	}
 
 public:
 	inline ChunkBatch(const ChunkPos &chunkPos, const uint32_t numSubchunkLevels):
 			level(numSubchunkLevels-1),
 			batchPos(toBatchPos(chunkPos, numSubchunkLevels-1)), // can't use level inside initializer list
-			dirty(true) {
-		if(level == 0) {
-			for(int i = 0; i < 8; i++)
-				chunks[i] = nullptr;
-		} else {
+			dirty(true), gpuDirty(false) {
+		if(level > 0)
 			for(int i = 0; i < 8; i++)
 				subBatches[i] = nullptr;
-		}
 	}
 	inline ~ChunkBatch() {
 	}
@@ -77,40 +73,84 @@ public:
 
 public:
 	inline uint8_t numSubMeshes() const {
+		if(level == 0) return 0; // level 0 Batches don't contain sub Batches
+
 		uint8_t num = 0;
-		if(level == 0) {
-			for(int i = 0; i < 8; i++)
-				num += chunks[i] != nullptr;
-		} else {
-			for(int i = 0; i < 8; i++)
-				num += subBatches[i] != nullptr;
-		}
+		for(int i = 0; i < 8; i++)
+			num += subBatches[i] != nullptr;
 		return num;
+	}
+
+	inline Mesh &getMesh() {
+		if(numSubMeshes() == 1) // Batches with exactly 1 SubMesh just reference that Batch's content
+			for(int i = 0; i < 8; i++)
+				if(subBatches[i])
+					return subBatches[i]->getMesh();
+		return mesh;
+	}
+	inline const Mesh &getMesh() const {
+		if(numSubMeshes() == 1) // Batches with exactly 1 SubMesh just reference that Batch's content
+			for(int i = 0; i < 8; i++)
+				if(subBatches[i])
+					return subBatches[i]->getMesh();
+		return mesh;
+	}
+	inline GPUMesh &getGPUMesh() {
+		if(numSubMeshes() == 1) // Batches with exactly 1 SubMesh just reference that Batch's content
+			for(int i = 0; i < 8; i++)
+				if(subBatches[i])
+					return subBatches[i]->getGPUMesh();
+		return gpuMesh;
+	}
+	inline const GPUMesh &getGPUMesh() const {
+		if(numSubMeshes() == 1) // Batches with exactly 1 SubMesh just reference that Batch's content
+			for(int i = 0; i < 8; i++)
+				if(subBatches[i])
+					return subBatches[i]->getGPUMesh();
+		return gpuMesh;
+	}
+	inline const ChunkPos absoluteMeshPosition() const {
+		if(numSubMeshes() == 1) // Batches with exactly 1 SubMesh just reference that Batch's content
+			for(int i = 0; i < 8; i++)
+				if(subBatches[i])
+					return subBatches[i]->absoluteMeshPosition();
+		return toChunkPos(batchPos, level);
+	}
+	inline bool isDirty() const {
+		if(numSubMeshes() == 1) // Batches with exactly 1 SubMesh just reference that Batch's content
+			for(int i = 0; i < 8; i++)
+				if(subBatches[i])
+					return subBatches[i]->isDirty();
+		return dirty;
+	}
+	inline bool isGPUDirty() const {
+		if(numSubMeshes() == 1) // Batches with exactly 1 SubMesh just reference that Batch's content
+			for(int i = 0; i < 8; i++)
+				if(subBatches[i])
+					return subBatches[i]->isGPUDirty();
+		return gpuDirty;
 	}
 
 public:
 	inline void addChunk(const ChunkPos &chunkPos) {
-		const ChunkPos chunkPosRel = toBatchPos(chunkPos - toChunkPos(batchPos, level), level-1);
-
+		const ChunkPos chunkPosRel = toRelativeSubBatchPos(chunkPos);
 		const uint8_t index = chunkPosRel.z() * 4 + chunkPosRel.y() * 2 + chunkPosRel.x();
-		if(level == 0) {
-			chunks[index] = new ChunkMesh(chunkPos);
-		} else {
-			if(subBatches[index] == nullptr)
-				subBatches[index] = new ChunkBatch(chunkPos, level);
+
+		if(subBatches[index] == nullptr)
+			subBatches[index] = new ChunkBatch(chunkPos, level);
+
+		if(level-1 > 0) // only add chunk to SubBatch if subBatch doesn't represent a single Chunk (if level of SubBatch > 0)
 			subBatches[index]->addChunk(chunkPos);
-		}
 	}
 
 	inline void removeChunk(const ChunkPos &chunkPos) {
-		const ChunkPos chunkPosRel = toBatchPos(chunkPos - toChunkPos(batchPos, level), level-1);
-
+		const ChunkPos chunkPosRel = toRelativeSubBatchPos(chunkPos);
 		const uint8_t index = chunkPosRel.z() * 4 + chunkPosRel.y() * 2 + chunkPosRel.x();
-		if(level == 0) {
-			delete chunks[index];
-			chunks[index] = nullptr;
+
+		if(level == 1) {
+			delete subBatches[index];
+			subBatches[index] = nullptr;
 		} else {
-			// dirty = true;
 			subBatches[index]->removeChunk(chunkPos);
 
 			if(subBatches[index]->numSubMeshes() == 0) {
@@ -118,128 +158,115 @@ public:
 				subBatches[index] = nullptr;
 			}
 		}
+
+		dirty = true;
 	}
 
 
 public:
 	inline void generateCombinedMesh() {
-		thread_local static Mesh *meshes[8];
-		thread_local static GPUMesh *gpuMeshes[8];
-		if(level == 0) {
-			for(int i = 0; i < 8; i++) {
-				meshes[i] = (chunks[i] == nullptr) ? nullptr : &(chunks[i]->mesh);
-				gpuMeshes[i] = (chunks[i] == nullptr) ? nullptr : &(chunks[i]->gpuMesh);
-			}
-		} else {
-			for(int i = 0; i < 8; i++) {
-				meshes[i] = (subBatches[i] == nullptr) ? nullptr : &(subBatches[i]->mesh);
-				gpuMeshes[i] = (subBatches[i] == nullptr) ? nullptr : &(subBatches[i]->gpuMesh);
-			}
-		}
-
+		if(numSubMeshes() <= 1) return;
 
 		constexpr GLsizei FLOATS_PER_VERTEX = 11;
 
-		// Generate combined Mesh:
 		int numCombinedVertices = 0;
 		int numCombinedIndices = 0;
 		for(int i = 0; i < 8; i++) {
-			if(meshes[i] == nullptr) continue; // Skip non-existing chunks
-			numCombinedVertices += meshes[i]->numVertices;
-			numCombinedIndices += meshes[i]->numIndices;
+			if(subBatches[i] == nullptr) continue; // Skip non-existing Batches
+
+			numCombinedVertices += subBatches[i]->getMesh().numVertices;
+			numCombinedIndices += subBatches[i]->getMesh().numIndices;
 		}
 
-		delete[] mesh.vertices;
-		delete[] mesh.indices;
-		mesh.vertices = new GLfloat[FLOATS_PER_VERTEX * numCombinedVertices];
-		mesh.indices = new GLuint[numCombinedIndices];
+		mesh.resize(FLOATS_PER_VERTEX, numCombinedVertices, numCombinedIndices); // allocate buffers + set vertex/index counts
 
-		mesh.numVertices = 0;
-		mesh.numIndices = 0;
-		for(int chunk = 0; chunk < 8; chunk++) {
-			if(meshes[chunk] == nullptr) continue; // Skip non-existing chunks
+		uint32_t numVerticesCopied = 0;
+		uint32_t numIndicesCopied = 0;
+		for(int chunkIndex = 0; chunkIndex < 8; chunkIndex++) {
+			if(subBatches[chunkIndex] == nullptr) continue; // Skip non-existing Batches
 
-			for(int i = 0; i < meshes[chunk]->numIndices; i++, mesh.numIndices++)
-				mesh.indices[mesh.numIndices] = meshes[chunk]->indices[i] + mesh.numVertices; // Copy (adjusted) indices
+			const ChunkBatch &batch = *subBatches[chunkIndex];
+			const Mesh &subMesh = batch.getMesh();
 
-			for(int i = 0; i < meshes[chunk]->numVertices; i++, mesh.numVertices++) {
-				glm::vec3 offset;
-				if(level == 0)
-					offset = (chunks[chunk]->sourceChunk - toChunkPos(batchPos, level)).toVec3() * 16.f;
-				else
-					offset = (toChunkPos(subBatches[chunk]->batchPos, level-1) - toChunkPos(batchPos, level)).toVec3() * 16.f;
+			for(int i = 0; i < subMesh.numIndices; i++, numIndicesCopied++)
+				mesh.indices[numIndicesCopied] = subMesh.indices[i] + numVerticesCopied; // Copy (adjusted) indices
 
-				memcpy( mesh.vertices + (FLOATS_PER_VERTEX * mesh.numVertices), // Copy vertices
-						meshes[chunk]->vertices + (FLOATS_PER_VERTEX * i),
+			for(int i = 0; i < subMesh.numVertices; i++, numVerticesCopied++) {
+				memcpy( mesh.vertices + (FLOATS_PER_VERTEX * numVerticesCopied), // Copy vertices
+						subMesh.vertices + (FLOATS_PER_VERTEX * i),
 						FLOATS_PER_VERTEX * sizeof(GLfloat));
 
-				mesh.vertices[FLOATS_PER_VERTEX * mesh.numVertices + 0] += offset.x;
-				mesh.vertices[FLOATS_PER_VERTEX * mesh.numVertices + 1] += offset.y;
-				mesh.vertices[FLOATS_PER_VERTEX * mesh.numVertices + 2] += offset.z;
+				const ChunkPos offset = batch.absoluteMeshPosition() - absoluteMeshPosition();
+				for(int dimension = 0; dimension < 3; dimension++)
+					mesh.vertices[numVerticesCopied * FLOATS_PER_VERTEX + dimension] += offset[dimension] * 16.f;
 			}
 		}
+
 		dirty = false;
+		gpuDirty = true;
 	}
 
-	inline void generate(const World &world, const ChunkPos &chunkPos) {     
-		const ChunkPos chunkPosRel = toBatchPos(chunkPos - toChunkPos(batchPos, level), level-1);
-
-		const uint8_t index = chunkPosRel.z() * 4 + chunkPosRel.y() * 2 + chunkPosRel.x();
+	inline bool generate(const World &world, const ChunkPos &chunkPos) { // returns true if any mesh was changed     
 		if(level == 0) {
-			if(chunks[index] != nullptr)
-				chunks[index]->generate(world);
-		} else {
-			if(subBatches[index] != nullptr)
-				subBatches[index]->generate(world, chunkPos);
+			generateChunkMesh(world, chunkPos, mesh);
+			gpuDirty = true;
+			return true;
 		}
 
-		dirty = true;
+		const ChunkPos chunkPosRel = toRelativeSubBatchPos(chunkPos);
+		const uint8_t index = chunkPosRel.z() * 4 + chunkPosRel.y() * 2 + chunkPosRel.x();
 
+		if(subBatches[index] != nullptr) {
+			if(subBatches[index]->generate(world, chunkPos));
+			{
+				dirty = true;
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	inline void regenerateCombinedMeshes() {
-		if(!dirty) return;
+		if(level > 1) // Subbatches of level 1 Batches are individual chunks and cannot generate combined meshes
+			for(int i = 0; i < 8; i++)
+				if(subBatches[i] != nullptr)
+					if(subBatches[i]->dirty)
+						subBatches[i]->regenerateCombinedMeshes();
 
+		generateCombinedMesh();
+	}
+
+	inline void updateGPUBuffers() {
 		if(level > 0)
 			for(int i = 0; i < 8; i++)
 				if(subBatches[i] != nullptr)
-					subBatches[i]->regenerateCombinedMeshes();
-	
-		generateCombinedMesh();
-		gpuMesh.upload(mesh); // -----------------
-		dirty = false;
+					// if(subBatches[i]->gpuDirty)
+					subBatches[i]->updateGPUBuffers();
+
+		if(level == 0 || numSubMeshes() > 1) {
+			if(gpuDirty) {
+				gpuMesh.upload(mesh);
+				gpuDirty = false;
+			}
+		}
 	}
 
 public:
 	inline void draw(const ChunkPos &virtualOrigin, const ShaderProgram &shader, const GLuint VAO) {
-		constexpr GLsizei FLOATS_PER_VERTEX = 11;
-		if(level == 0 && dirty) {
-			for(int i = 0; i < 8; i++) {
-				if(chunks[i] != nullptr) {
+		// constexpr GLsizei FLOATS_PER_VERTEX = 11;
 
-					const glm::mat4 model = glm::translate(glm::mat4(1.f), (chunks[i]->sourceChunk - virtualOrigin).toVec3() * 16.f);
-					glProgramUniformMatrix4fv(shader, shader.getUniformLocation("model"), 1, GL_FALSE, &model[0][0]);
+		if(level == 0 || (!isDirty() && !isGPUDirty())) { // If possible, draw only one Mesh:
+		// if(level == 0 || (false)) { // If possible, draw only one Mesh:
+			const glm::mat4 model = glm::translate(glm::mat4(1.f), (absoluteMeshPosition() - virtualOrigin).toVec3() * 16.f);
 
-					chunks[i]->gpuMesh.draw(VAO);
+			glProgramUniformMatrix4fv(shader, shader.getUniformLocation("model"), 1, GL_FALSE, &model[0][0]);
 
-					// glVertexArrayVertexBuffer(VAO, 0, chunks[i]->gpuMesh.VBO, 0, FLOATS_PER_VERTEX * sizeof(GLfloat));
-					// glVertexArrayElementBuffer(VAO, chunks[i]->gpuMesh.EBO);
-
-					// glDrawElements(GL_TRIANGLES, chunks[i]->gpuMesh.numIndices, GL_UNSIGNED_INT, 0);
-				}
-			}
-		} else {
-			if(!dirty) {
-				const glm::mat4 model = glm::translate(glm::mat4(1.f), (toChunkPos(batchPos, level) - virtualOrigin).toVec3() * 16.f);
-				// const glm::mat4 model = glm::translate(glm::mat4(1.f), (batchPos - virtualOrigin).toVec3() * 16.f);
-				glProgramUniformMatrix4fv(shader, shader.getUniformLocation("model"), 1, GL_FALSE, &model[0][0]);
-
-				gpuMesh.draw(VAO);
-			} else {
-				for(int i = 0; i < 8; i++)
-					if(subBatches[i] != nullptr)
-						subBatches[i]->draw(virtualOrigin, shader, VAO);
-			}
+			getGPUMesh().draw(VAO);
+		} else { // Otherwise delegate:
+			for(int i = 0; i < 8; i++)
+				if(subBatches[i] != nullptr)
+					subBatches[i]->draw(virtualOrigin, shader, VAO);
 		}
 	}
 };

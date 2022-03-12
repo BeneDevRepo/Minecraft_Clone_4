@@ -6,18 +6,79 @@
 
 #include <algorithm>
 
+
+#include "Threading/mingw.thread.h"
+
+
 #include <iostream> // Debug
 #include "Profiling/Profiler.h"
 
-// #include "Chunk.h"
 
+#include <vector>
+
+struct InterThreadMessage {
+	enum class Command {
+		AddChunkToRenderer,
+		RemoveChunkFromRenderer,
+		MarkChunkDirty,
+	};
+
+	Command command;
+	ChunkPos targetChunk;
+
+	inline InterThreadMessage(const Command _command, const ChunkPos _targetChunk): command(_command), targetChunk(_targetChunk) { }
+	inline InterThreadMessage(const InterThreadMessage &other): InterThreadMessage(command, targetChunk) { }
+};
+
+std::vector<InterThreadMessage> toRenderer, fromRenderer;
 
 World::World():
 		// renderDistance(20),
-		renderDistance(16),
-		// renderDistance(5),
-		chunks{},
+		// renderDistance(16),
+		renderDistance(5),
+		// renderDistance(3),
+		// chunks{},
 		renderer(4) {
+		// renderer(1) {
+
+	numUploadFailures.store(0);
+
+	std::thread *generator = new std::thread([](ChunkRenderer &renderer, World &world, std::atomic_uint32_t &numCommFailes) {
+		for(;;) {
+			for(; numCommFailes.load(std::memory_order::memory_order_relaxed) >= 5; );
+			for(bool expected = false; !renderer.inUse.compare_exchange_weak(expected, true); expected = false);
+
+
+			// for(const InterThreadMessage &message : toRenderer) {
+			// 	switch(message.command) {
+			// 		case InterThreadMessage::Command::AddChunkToRenderer:
+			// 			renderer.addChunk(message.targetChunk);
+			// 			break;
+
+			// 		// case InterThreadMessage::Command::RemoveChunkFromRenderer:
+			// 		// 	renderer.removeChunk(message.targetChunk);
+			// 		// 	break;
+
+			// 		case InterThreadMessage::Command::MarkChunkDirty:
+			// 			renderer.markChunkDirty(message.targetChunk);
+			// 			break;
+			// 	}
+			// }
+			// toRenderer.clear();
+
+
+			// Profiler::get().startSegment("Regenerate Chunk Meshes");
+			renderer.regenerateChunks(world);
+
+			// Profiler::get().startSegment("Regenerate Batch Meshes");
+			renderer.regenerateBatches();
+
+			renderer.inUse.store(false);
+			// Sleep(100);
+			// printf("Generating\n");
+		}
+	}, std::ref(renderer), std::ref(*this), std::ref(numUploadFailures));
+	// generator.join();
 }
 
 World::~World() {
@@ -32,9 +93,6 @@ void World::loadChunksAround(const ChunkPos &center) {
 		chunksLoaded = true;
 	}
 
-	// if(!(GetAsyncKeyState('R') & 0x8000))
-	// 	return;
-
 	// // Load new Chunks:
 	for(int x = -renderDistance; x <= renderDistance; x++) {
 		for(int y = -renderDistance; y <= renderDistance; y++) {
@@ -43,7 +101,9 @@ void World::loadChunksAround(const ChunkPos &center) {
 
 				if(getChunk(current) == nullptr) {
 					chunks.insert({current, new Chunk(current)});
-					renderer.addChunk(current);
+
+					// renderer.addChunk(current);
+					newChunks.insert(current);
 				}
 			}
 		}
@@ -59,10 +119,12 @@ void World::loadChunksAround(const ChunkPos &center) {
 				|| chunkPos.y() > center.y() + renderDistance
 				|| chunkPos.z() > center.z() + renderDistance) {
 			Chunk *const chunk = i->second;
-			i = chunks.erase(i);
+			// i = chunks.erase(i); // -----------------------------
+			++i;
 
-			renderer.removeChunk(chunk->chunkPos);
-			delete chunk;
+			// renderer.removeChunk(chunk->chunkPos); // old
+			// deletedChunks.insert(chunk->chunkPos);
+			// delete chunk; // -----------------------------
 		} else {
 			++i;
 		}
@@ -116,10 +178,58 @@ bool World::collidesWith(const ChunkPos &virtualOrigin, const AABB &entity, cons
 	return contact_time < 1.f;
 }
 
-
 void World::draw(const ChunkPos &virtualOrigin, const glm::mat4 &pv, const ShaderProgram &shader) {
-	Profiler::get().startSegment("Regenerate Meshes");
-	renderer.regenerateChunks(*this);
+
+	// if(bool expected = false; renderer.inUse.compare_exchange_weak(expected, true)) {
+	// 	Profiler::get().startSegment("Regenerate Chunk Meshes");
+	// 	renderer.regenerateChunks(*this);
+
+	// 	Profiler::get().startSegment("Regenerate Batch Meshes");
+	// 	renderer.regenerateBatches();
+
+	// 	renderer.inUse.store(false);
+	// }
+
+	Profiler::get().startSegment("Update GPU Buffers");
+	if(bool expected = false; renderer.inUse.compare_exchange_weak(expected, true)) {
+		renderer.updateGPUBuffers();
+
+		// for(const ChunkPos &chunkPos : deletedChunks) {
+		for(auto it = deletedChunks.begin(); it != deletedChunks.end(); ) {
+			const ChunkPos &chunkPos = *it;
+			if(newChunks.erase(chunkPos) > 0) { // erase returns number of erased Elements
+				// deletedChunks.erase(chunkPos);
+				it = deletedChunks.erase(it);
+				continue;
+			}
+			++it;
+		}
+
+
+		// for(const ChunkPos &chunkPos : newChunks)
+		// 	toRenderer.push_back(InterThreadMessage{InterThreadMessage::Command::AddChunkToRenderer, chunkPos});
+		// // for(const ChunkPos &chunkPos : deletedChunks)
+		// // 	toRenderer.push_back({InterThreadMessage::Command::RemoveChunkFromRenderer, chunkPos});
+		// for(const ChunkPos &chunkPos : dirtyChunks)
+		// 	toRenderer.push_back(InterThreadMessage{InterThreadMessage::Command::MarkChunkDirty, chunkPos});
+
+		for(const ChunkPos &chunkPos : newChunks)
+			renderer.addChunk(chunkPos);
+		// for(const ChunkPos &chunkPos : deletedChunks)
+		// 	renderer.removeChunk(chunkPos);
+		for(const ChunkPos &chunkPos : dirtyChunks)
+			renderer.markChunkDirty(chunkPos);
+
+		newChunks.clear();
+		deletedChunks.clear();
+		dirtyChunks.clear();
+
+
+		renderer.inUse.store(false);
+
+		numUploadFailures.store(0);
+	} else
+		numUploadFailures.fetch_add(1);
 
 	Profiler::get().startSegment("Render Meshes");
 	renderer.draw(virtualOrigin, shader);

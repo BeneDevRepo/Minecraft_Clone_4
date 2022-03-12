@@ -2,8 +2,6 @@
 
 void generateChunkMesh(const World &world, const ChunkPos &chunkPos, Mesh &mesh) {
 	const Chunk *const chunk = world.getChunk(chunkPos);
-	// if(chunk == nullptr)
-	// 	return;
 
 	const Chunk *const xMinus = world.getChunk({chunkPos.x()-1, chunkPos.y(),   chunkPos.z()  });
 	const Chunk *const xPlus  = world.getChunk({chunkPos.x()+1, chunkPos.y(),   chunkPos.z()  });
@@ -12,8 +10,6 @@ void generateChunkMesh(const World &world, const ChunkPos &chunkPos, Mesh &mesh)
 	const Chunk *const zMinus = world.getChunk({chunkPos.x(),   chunkPos.y(),   chunkPos.z()-1});
 	const Chunk *const zPlus  = world.getChunk({chunkPos.x(),   chunkPos.y(),   chunkPos.z()+1});
 
-	// using BlockArray = Block[16][16][16];
-	// const BlockArray &blocks = chunk->blocks;
 	const Chunk::BlockArray &blocks = chunk->getBlocks();
 
 	struct ivec3 {

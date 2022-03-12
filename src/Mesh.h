@@ -36,4 +36,14 @@ public:
         }
         return *this;
 	}
+
+	inline void resize(const uint32_t floatsPerVertex, const GLsizei numVerticesNew, const GLsizei numIndicesNew) { //TODO: separate capacity from used size
+		delete[] vertices;
+		vertices = new GLfloat[numVerticesNew * floatsPerVertex];
+		numVertices = numVerticesNew;
+
+		delete[] indices;
+		indices = new GLuint[numIndicesNew];
+		numIndices = numIndicesNew;
+	}
 };

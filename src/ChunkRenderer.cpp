@@ -1,9 +1,7 @@
 #include "ChunkRenderer.h"
 
-// #include "World.h"
-
-
 ChunkRenderer::ChunkRenderer(const uint32_t numLevels):
+		inUse(false),
 		numLevels(numLevels) {
 	glCreateVertexArrays(1, &VAO);
 
