@@ -34,6 +34,9 @@ public:
 	ChunkRenderer(const uint32_t numLevels);
 	~ChunkRenderer();
 
+	ChunkRenderer(const ChunkRenderer&) = delete;
+	ChunkRenderer &operator=(const ChunkRenderer&) = delete;
+
 	inline ChunkPos topLevelBatchPos(const ChunkPos &chunkPos) const {
 		return ChunkBatch::toBatchPos(chunkPos, numLevels-1);
 	}

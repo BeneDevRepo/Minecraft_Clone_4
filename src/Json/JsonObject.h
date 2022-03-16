@@ -11,18 +11,17 @@
 JSON_NAMESPACE_START
 
 class Object {
-	using Key = std::string;
-	std::unordered_map<Key, Value> children;
+	std::unordered_map<ObjectKey, Value> children;
 
 public:
 	Object() = default;
 	~Object() = default;
 
 public:
-	bool has(const Key& key) const;
-	Value& operator[](const Key& key);
-	Value operator[](const Key& key) const;
-	const std::unordered_map<Key, Value> &getDict() const;
+	bool has(const ObjectKey& key) const;
+	Value& operator[](const ObjectKey& key);
+	Value operator[](const ObjectKey& key) const;
+	const std::unordered_map<ObjectKey, Value> &getDict() const;
 };
 
 JSON_NAMESPACE_END

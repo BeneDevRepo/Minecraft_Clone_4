@@ -11,14 +11,8 @@ inline bool whitespace(const char c) {
 }
 
 inline void skipWhitespace(std::istream &stream) {
-	for(;;) {
-		char c;
-		stream >> c;
-		if(!whitespace(c)) {
-			stream.unget();
-			break;
-		}
-	}
+	for(; whitespace(stream.peek()); )
+		stream.ignore(1);
 }
 
 bool parseBool(std::istream &source, bool &success);
@@ -81,20 +75,23 @@ std::string parseString(std::istream &source, bool &success) {
 	for(;;) {
 		source >> c;
 
-		if(!openEscapeSequence) {
-			if(c == '\\') {
-				openEscapeSequence = true;
-				continue;
-			} else if(c == '\"')
-				break;
-		} else {
-			openEscapeSequence = false;
+		if(c == '\\' && !openEscapeSequence) {
+			openEscapeSequence = true;
+			// continue;
+			source >> c;
+		}
+
+		if(c == '\"' && !openEscapeSequence) {
+			// printf("<%s>\n", out.c_str());
+			return out;
 		}
 
 		out += c;
+
+		openEscapeSequence = false;
 	}
 
-	return out;
+	// return out;
 }
 
 
@@ -173,18 +170,9 @@ Value parseValue(std::istream &source, bool &success) {
 }
 
 Value fromFile(const char *const filename) {
-	std::ifstream file(filename);
-
-	// skipWhitespace(file);
+	std::ifstream file(filename, std::ifstream::in | std::ifstream::binary);
 
 	bool success;
-	// parseValue(file, success);
-
-	// char c;
-	// while(!file.eof()) {
-	// 	file >> c;
-	// 	std::cout << c;
-	// }
 
 	return parseValue(file, success);
 }

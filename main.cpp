@@ -29,8 +29,6 @@
 #include "Profiling/Profiler.h"
 
 
-#include "Json/Json.h"
-
 
 // - Monitor Physik Engine
 // - Audio (z.B. Console keyboard)
@@ -46,13 +44,11 @@
 // - Clouds
 // - Particle System (Compute Shader + Instanced Renderer)
 // - Deferred Renderer
-// - HDR + PBR
+// - PBR
 // - Image Based Lighting
 // - Delete all Copyconstructors and CopyAssignmentOperators
-// - use glVertexAttribDivisor to send vertex attributes per Primitive instead of per Vertex
 // - use Shader Storage Buffer Objects for Lights etc.
 // - use equirectangular HDRs for skymap + IBL
-// - Use same VAO for all draw calls (or atl. reduce number of VAOs)
 
 // - Better Block Picking:
 // https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.42.3443&rep=rep1&type=pdf
@@ -70,13 +66,10 @@ quixels megascans (real scans)
 
 /*
  * ################   URGENT:
- * - Implement floating Origin
- * - recreate Meshes next to freshly created chunks
  * - Implement greedy Meshing
  * - Implement Block Types
  * - Implement text rendering
  * - Implement profiling
- * - implement multithreaded / deferred chunk building
  * 
  * - Maybe try deferred rendering
  */
@@ -96,56 +89,17 @@ DebugRenderer *DEBUG_RENRERER;
 
 #include "Audio/AudioOutput.h"
 
-#include <functional> // useless
+
+
+// #include "Json/Json.h"
+// #include "Font/FontMeta.h"
+#include "TextRenderer.h"
+
+
+// >> https://refactoring.guru/design-patterns <<
 
 
 int main() {
-	const auto json = Json::fromFile("../res/fonts/Arial_32/font.json");
-
-	std::function<void(const Json::Value&)> printJson;
-	printJson = [&printJson](const Json::Value& val)->void {
-		switch(val.getType()) {
-			case Json::Value::Type::Object:
-				printf("{");
-				// printf("\n"); // --
-				for(const auto &[key, value] : val.getObject().getDict()) {
-					printf("\"%s\": ", key.c_str());
-					printJson(value);
-					printf(", ");
-					// printf("\n"); // --
-				}
-				printf("}");
-				break;
-
-			case Json::Value::Type::Array:
-				break; // TODO: HANDLE
-
-			case Json::Value::Type::Bool:
-				printf("\"%s\"", val.getBool() ? "true" : "false");
-				break;
-
-			case Json::Value::Type::Int:
-				printf("%d", val.getInt());
-				break;
-
-			case Json::Value::Type::String:
-				printf("\"%s\"", val.getString().c_str());
-				break;
-
-			case Json::Value::Type::Null:
-				printf("<null>");
-				break;
-		}
-	};
-
-	// printJson(json);
-	Json::Value &characters = json.getObject()["characters"];
-	for(const auto &[key, value] : characters.getObject().getDict()) {
-		printf("%s: ", key.c_str());
-		printJson(value);
-		printf("\n");
-	}
-
 	// {
 	// 	AudioOutput audioOutput;
 
@@ -173,10 +127,11 @@ int main() {
 	// 	exit(1);
 	// }
 
-
-
 	OpenGLWindow win(800, 800);
 	win.win.setCaptureMouse(true);
+
+	// TextRenderer textRenderer("../res/fonts/Arial_32");
+	TextRenderer textRenderer("../res/fonts/Arial_64");
 
 
 	Player player({.5, 12., .5}, 90.);
@@ -206,6 +161,9 @@ int main() {
 	ShaderProgram bloomAddShaderProgram("../res/shaders/BloomAdd.compute.glsl");
 
 	ShaderProgram framebufferShaderProgram("../res/shaders/FrameBuffer.vert.glsl", "../res/shaders/FrameBuffer.frag.glsl");
+
+	ShaderProgram guiShaderProgram("../res/shaders/Gui.vert.glsl", "../res/shaders/Gui.frag.glsl");
+
 
 
 
@@ -246,7 +204,6 @@ int main() {
 	// Texture specular("../res/box_specular.png");
 
 	Cubemap skyTexture("../res/cubemap----"); // files hard coded
-
 
 	// StaticMesh bunny = StaticMesh::loadSTL("../res/Bunny.stl");
 	StaticMesh bunny = StaticMesh::cube();
@@ -639,10 +596,6 @@ int main() {
 			DEBUG_RENRERER->box(player.getViewPos() + player.getViewDir() * .2f - glm::vec3(.0001f, .0001f, .0001f),
 								player.getViewPos() + player.getViewDir() * .2f + glm::vec3(.0001f, .0001f, .0001f));
 
-			// lightsourceShaderProgram.bind();
-			// 	lightsource.bind();
-			// 	lightsource.draw();
-
 		// Debug:
 			glDepthFunc(GL_LEQUAL);// change depth function so depth test passes when values are equal to depth buffer's content
 			debugShaderProgram.bind();
@@ -670,9 +623,6 @@ int main() {
 
 		// Bloom:
 		// if(GetAsyncKeyState('B') & 0x8000) {
-		LARGE_INTEGER beforeBloom;
-		QueryPerformanceCounter(&beforeBloom);
-			// glBindTextureUnit(0, framebufferTex);
 			constexpr int fac = 64;
 			const GLuint numDispatchesX = win.win.width * win.win.height / fac;// + 1;
 			const GLuint numDispatchesY = 1;
@@ -708,13 +658,8 @@ int main() {
 				glDispatchCompute(numDispatchesX, numDispatchesY, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
-		LARGE_INTEGER afterBloom;
-		QueryPerformanceCounter(&afterBloom);
-		// if(frame % 240 == 0)
-		// 	printf("Bloom time: %.4f ms\n", (afterBloom.QuadPart - beforeBloom.QuadPart) * 1. / (frequency.QuadPart / 1000));
-		// }
 
-
+			Profiler::get().startSegment("Tonemapping + Gamma Correction");
 		// Tonemapping + Gamma correction:
 			// framebuffer texture
 			glBindTextureUnit(1, framebufferTex);
@@ -724,6 +669,34 @@ int main() {
 			framebufferShaderProgram.bind();
 				viewportRect.bind();
 				viewportRect.draw();
+			
+
+			Profiler::get().startSegment("GUI Rendering");
+
+			const glm::vec2 screenSize { 1.f * win.win.width, 1.f * win.win.height };
+			textRenderer.clear(); // DEBUG
+			// textRenderer.addText("Test", glm::vec2{50.f / win.win.width, 50.f / win.win.height}, {1.f, 1.f}); // DEBUG
+			// textRenderer.addText("Test 123546789 ASDFGHJKLO", glm::vec2(50, 500) / screenSize * 2.f - glm::vec2(1.f), glm::vec2(5.f, 5.f) / screenSize); // DEBUG
+
+			textRenderer.addText("Test 123546789 ASDFGHJKLO", glm::vec2(0, 0), 32.f); // DEBUG
+			textRenderer.addText("Text is Nice", glm::vec2(50, 50), 32.f); // DEBUG
+			textRenderer.addText("\\ !  .    ,        -    _", glm::vec2(50, 100), 32.f); // DEBUG
+
+			glDepthFunc(GL_ALWAYS);
+			glDisable(GL_CULL_FACE);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+			textRenderer.texture.bind(1);
+			glProgramUniform1i(guiShaderProgram, glGetUniformLocation(guiShaderProgram, "font"), 1);
+			glProgramUniform2f(guiShaderProgram, glGetUniformLocation(guiShaderProgram, "screenSize"), win.win.width, win.win.height);
+			guiShaderProgram.bind();
+				textRenderer.draw(guiShaderProgram);
+
+			glDisable(GL_BLEND);
+			glEnable(GL_CULL_FACE);
+			glDepthFunc(GL_LESS);
+
 
 		Profiler::get().startSegment("After Frame");
 

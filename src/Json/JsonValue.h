@@ -44,6 +44,11 @@ public:
 	inline Object&		getObject()	const { assert(type == Type::Object);	return *oVal; }
 	inline Array&		getArray()	const { assert(type == Type::Array);	return *aVal; }
 	inline bool 		getBool()	const { assert(type == Type::Bool);		return bVal; }
+
+	// inline Value& operator[](const ObjectKey& key) const { assert(type == Type::Object);	return (*oVal)[key]; }
+	// inline Value& operator[](const size_t index) const { assert(type == Type::Array);	return (*aVal)[index]; }
+	Value& operator[](const ObjectKey& key) const;
+	Value& operator[](const size_t index) const;
 };
 
 

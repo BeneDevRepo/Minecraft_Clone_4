@@ -71,4 +71,14 @@ void Value::free() {
 	}
 }
 
+Value& Value::operator[](const ObjectKey& key) const {
+	assert(type == Type::Object);
+	return (*oVal)[key];
+}
+
+Value& Value::operator[](const size_t index) const {
+	assert(type == Type::Array);
+	return (*aVal)[index];
+}
+
 JSON_NAMESPACE_END

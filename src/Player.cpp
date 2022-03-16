@@ -102,7 +102,7 @@ void Player::update(const float dt, World& world) {
 		if(GetAsyncKeyState(' ') & 0x8000)
 			vel.y = 10.f;
 		else if(GetAsyncKeyState(VK_SHIFT) & 0x8000)
-			vel.y = 10.f;
+			vel.y = -10.f;
 		else
 			vel.y = 0.f;
 	}
